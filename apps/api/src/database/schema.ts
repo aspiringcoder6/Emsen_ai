@@ -116,6 +116,72 @@ export const authSchemaCompatibilitySql = `
     ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 `;
 
+export const legacyCamelCaseUserColumnsSql = `
+  DO $migration$
+  BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'users'
+        AND column_name = 'displayName'
+    ) THEN
+      UPDATE users
+      SET display_name = "displayName"
+      WHERE display_name = '' AND "displayName" IS NOT NULL;
+      ALTER TABLE users ALTER COLUMN "displayName" DROP NOT NULL;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'users'
+        AND column_name = 'passwordHash'
+    ) THEN
+      UPDATE users
+      SET password_hash = "passwordHash"
+      WHERE password_hash = '' AND "passwordHash" IS NOT NULL;
+      ALTER TABLE users ALTER COLUMN "passwordHash" DROP NOT NULL;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'users'
+        AND column_name = 'termsAcceptedAt'
+    ) THEN
+      UPDATE users
+      SET terms_accepted_at = "termsAcceptedAt"
+      WHERE terms_accepted_at IS NULL AND "termsAcceptedAt" IS NOT NULL;
+      ALTER TABLE users ALTER COLUMN "termsAcceptedAt" DROP NOT NULL;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'users'
+        AND column_name = 'createdAt'
+    ) THEN
+      UPDATE users
+      SET created_at = "createdAt"
+      WHERE "createdAt" IS NOT NULL;
+      ALTER TABLE users ALTER COLUMN "createdAt" DROP NOT NULL;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'users'
+        AND column_name = 'updatedAt'
+    ) THEN
+      UPDATE users
+      SET updated_at = "updatedAt"
+      WHERE "updatedAt" IS NOT NULL;
+      ALTER TABLE users ALTER COLUMN "updatedAt" DROP NOT NULL;
+    END IF;
+  END;
+  $migration$;
+`;
+
 export const aiChatSchemaSql = `
   ALTER TABLE creator_dna_signals
     DROP CONSTRAINT IF EXISTS creator_dna_signals_source_check;

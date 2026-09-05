@@ -56,7 +56,7 @@ export function setSessionCookie(
   const baseOptions = {
     httpOnly: true,
     path: "/",
-    sameSite: "lax" as const,
+    sameSite: config.isProduction ? ("none" as const) : ("lax" as const),
     secure: config.isProduction,
   };
 
@@ -76,7 +76,7 @@ export function clearSessionCookie(response: Response) {
   response.clearCookie(config.session.cookieName, {
     httpOnly: true,
     path: "/",
-    sameSite: "lax",
+    sameSite: config.isProduction ? "none" : "lax",
     secure: config.isProduction,
   });
 }

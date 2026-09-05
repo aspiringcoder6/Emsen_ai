@@ -6,6 +6,7 @@ import {
   aiChatSchemaSql,
   initialSchemaSql,
   directionSchemaSql,
+  legacyCamelCaseUserColumnsSql,
 } from "./schema.js";
 
 const migrations = [
@@ -15,6 +16,7 @@ const migrations = [
   { sql: directionSchemaSql, version: 4 },
   { sql: contentPlanSchemaSql, version: 5 },
   { sql: authSchemaCompatibilitySql, version: 6 },
+  { sql: legacyCamelCaseUserColumnsSql, version: 7 },
 ];
 
 export async function migrateDatabase() {
