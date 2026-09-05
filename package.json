@@ -1,0 +1,25 @@
+{
+  "name": "emsen",
+  "version": "0.1.0",
+  "private": true,
+  "description": "emsen MVP workspace",
+  "packageManager": "npm@11.9.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace @creator-flow/web",
+    "dev:api": "npm run dev --workspace @creator-flow/api",
+    "dev:worker": "npm run dev --workspace @creator-flow/worker",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "check": "npm run typecheck && npm run build",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f"
+  }
+}

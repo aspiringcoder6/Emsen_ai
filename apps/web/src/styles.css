@@ -1,0 +1,301 @@
+@import "tailwindcss";
+
+:root {
+  --emsen-green: #46a82d;
+  --emsen-green-dark: #284d31;
+  --emsen-leaf: #82c95b;
+  --emsen-pink: #f58fa5;
+  --emsen-cream: #fbfdf7;
+  font-family:
+    "Avenir Next Rounded", "Nunito", ui-rounded, "Segoe UI", system-ui,
+    sans-serif;
+  color: #31583a;
+  background: #fbfdf7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  overflow-x: hidden;
+  background: #fbfdf7;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(70, 168, 45, 0.32);
+  outline-offset: 2px;
+}
+
+textarea.chat-composer-textarea:focus-visible {
+  outline: none;
+}
+
+::selection {
+  color: #284d31;
+  background: #d9efcf;
+}
+
+.emsen-wordmark {
+  display: inline-block;
+  font-family: "Segoe Print", "Comic Sans MS", "Avenir Next Rounded", cursive;
+  font-weight: 800;
+  line-height: 0.94;
+  letter-spacing: -0.09em;
+  text-shadow: 0 3px 0 rgba(255, 255, 255, 0.55);
+  transform: rotate(-2deg);
+}
+
+.flow-canvas {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 86% 8%, rgba(245, 143, 165, 0.11), transparent 25rem),
+    radial-gradient(circle at 28% 96%, rgba(103, 184, 111, 0.13), transparent 24rem),
+    linear-gradient(180deg, #fffef9 0%, #f6fbf1 100%);
+}
+
+.flow-canvas::before {
+  position: fixed;
+  z-index: -1;
+  right: -10rem;
+  bottom: -8rem;
+  width: 34rem;
+  height: 34rem;
+  border: 1px solid rgba(70, 168, 45, 0.13);
+  border-radius: 42% 58% 64% 36% / 45% 39% 61% 55%;
+  content: "";
+  transform: rotate(18deg);
+}
+
+.hero-current {
+  position: absolute;
+  border: 1px solid rgba(218, 245, 196, 0.2);
+  border-radius: 47% 53% 41% 59% / 48% 37% 63% 52%;
+}
+
+.hero-current-one {
+  right: -9rem;
+  top: -15rem;
+  width: 37rem;
+  height: 37rem;
+  animation: current-drift 13s ease-in-out infinite alternate;
+}
+
+.hero-current-two {
+  right: 8rem;
+  bottom: -21rem;
+  width: 34rem;
+  height: 34rem;
+  border-color: rgba(103, 184, 111, 0.15);
+  animation: current-drift 16s ease-in-out -4s infinite alternate-reverse;
+}
+
+.petal {
+  position: absolute;
+  width: 28px;
+  height: 38px;
+  border-radius: 58% 42% 62% 38% / 66% 50% 50% 34%;
+  background: linear-gradient(145deg, rgba(255, 221, 229, 0.9), rgba(245, 143, 165, 0.46));
+  filter: blur(0.2px);
+  animation: petal-float 7s ease-in-out infinite;
+}
+
+.petal-one {
+  right: 33%;
+  top: 13%;
+  transform: rotate(24deg);
+}
+
+.petal-two {
+  right: 8%;
+  top: 56%;
+  width: 20px;
+  height: 29px;
+  animation-delay: -2.4s;
+  transform: rotate(-32deg);
+}
+
+.petal-three {
+  right: 24%;
+  bottom: 9%;
+  width: 16px;
+  height: 23px;
+  animation-delay: -4.6s;
+  transform: rotate(48deg);
+}
+
+.flow-path {
+  stroke-dasharray: 12 9;
+  animation: stream 15s linear infinite;
+}
+
+.flow-node {
+  position: absolute;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(12px);
+  animation: buoy 4s ease-in-out infinite;
+}
+
+.animation-delay-1 {
+  animation-delay: -1s;
+}
+
+.animation-delay-2 {
+  animation-delay: -2s;
+}
+
+.animation-delay-3 {
+  animation-delay: -3s;
+}
+
+.chat-message-enter {
+  animation: chat-enter 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-form-enter {
+  animation: auth-form-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-current {
+  position: absolute;
+  border: 1px solid rgba(70, 168, 45, 0.16);
+  border-radius: 44% 56% 63% 37% / 51% 41% 59% 49%;
+}
+
+.auth-current-one {
+  top: -18rem;
+  right: -16rem;
+  width: 46rem;
+  height: 46rem;
+  animation: current-drift 18s ease-in-out infinite alternate;
+}
+
+.auth-current-two {
+  bottom: -20rem;
+  left: -18rem;
+  width: 42rem;
+  height: 42rem;
+  border-color: rgba(103, 184, 111, 0.14);
+  animation: current-drift 22s ease-in-out -5s infinite alternate-reverse;
+}
+
+.flow-scrollbar {
+  scrollbar-color: #a8c99b transparent;
+  scrollbar-width: thin;
+}
+
+.flow-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.flow-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #a8c99b;
+}
+
+.flow-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes current-drift {
+  from {
+    transform: rotate(-5deg) scale(0.96);
+  }
+
+  to {
+    transform: rotate(10deg) scale(1.04);
+  }
+}
+
+@keyframes stream {
+  to {
+    stroke-dashoffset: -210;
+  }
+}
+
+@keyframes buoy {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes petal-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  50% {
+    translate: 8px -12px;
+  }
+}
+
+@keyframes chat-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes auth-form-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
