@@ -19,6 +19,33 @@ export const notFoundHandler: RequestHandler = (_request, response) => {
   });
 };
 
+function safeErrorDetails(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return { name: "UnknownError" };
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    constraint?: unknown;
+    name?: unknown;
+    stack?: unknown;
+    table?: unknown;
+  };
+  const stackFrames =
+    typeof candidate.stack === "string"
+      ? candidate.stack.split("\n").slice(1, 6).map((line) => line.trim())
+      : undefined;
+
+  return {
+    code: typeof candidate.code === "string" ? candidate.code : undefined,
+    constraint:
+      typeof candidate.constraint === "string" ? candidate.constraint : undefined,
+    name: typeof candidate.name === "string" ? candidate.name : "UnknownError",
+    stackFrames,
+    table: typeof candidate.table === "string" ? candidate.table : undefined,
+  };
+}
+
 export const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
   if (error instanceof HttpError) {
     response.status(error.status).json({
@@ -37,7 +64,7 @@ export const errorHandler: ErrorRequestHandler = (error, _request, response, _ne
     return;
   }
   // Request bodies and provider errors may contain credentials; never log them wholesale.
-  console.error("[api] unhandled error", error instanceof Error ? error.name : "UnknownError");
+  console.error("[api] unhandled error", safeErrorDetails(error));
   response.status(500).json({
     error: {
       code: "INTERNAL_ERROR",
