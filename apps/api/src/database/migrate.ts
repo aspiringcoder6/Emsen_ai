@@ -1,6 +1,7 @@
 import { database } from "./pool.js";
 import { contentPlanSchemaSql } from "./contentPlanSchema.js";
 import {
+  authSchemaCompatibilitySql,
   aiChatReplyLinkSchemaSql,
   aiChatSchemaSql,
   initialSchemaSql,
@@ -13,6 +14,7 @@ const migrations = [
   { sql: aiChatReplyLinkSchemaSql, version: 3 },
   { sql: directionSchemaSql, version: 4 },
   { sql: contentPlanSchemaSql, version: 5 },
+  { sql: authSchemaCompatibilitySql, version: 6 },
 ];
 
 export async function migrateDatabase() {

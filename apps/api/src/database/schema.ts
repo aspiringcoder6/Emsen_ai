@@ -83,6 +83,39 @@ export const initialSchemaSql = `
     ON ai_evaluations(user_id, created_at DESC);
 `;
 
+// Migration 1 originally created these tables with CREATE TABLE IF NOT EXISTS.
+// Reconcile databases that already had an older version of the tables before
+// schema_migrations was introduced, without deleting or replacing their data.
+export const authSchemaCompatibilitySql = `
+  ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS password_hash TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+  ALTER TABLE creator_dna_profiles
+    ADD COLUMN IF NOT EXISTS onboarding_status TEXT NOT NULL DEFAULT 'not-started',
+    ADD COLUMN IF NOT EXISTS current_step INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS niche TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS platforms JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS tone_traits JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS audience TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS boundaries TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS latest_insight JSONB,
+    ADD COLUMN IF NOT EXISTS prompt_cursor INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS last_captured_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+  ALTER TABLE auth_sessions
+    ADD COLUMN IF NOT EXISTS token_hash CHAR(64),
+    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+`;
+
 export const aiChatSchemaSql = `
   ALTER TABLE creator_dna_signals
     DROP CONSTRAINT IF EXISTS creator_dna_signals_source_check;
