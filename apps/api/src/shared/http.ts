@@ -26,6 +26,7 @@ function safeErrorDetails(error: unknown) {
 
   const candidate = error as {
     code?: unknown;
+    column?: unknown;
     constraint?: unknown;
     name?: unknown;
     stack?: unknown;
@@ -38,6 +39,7 @@ function safeErrorDetails(error: unknown) {
 
   return {
     code: typeof candidate.code === "string" ? candidate.code : undefined,
+    column: typeof candidate.column === "string" ? candidate.column : undefined,
     constraint:
       typeof candidate.constraint === "string" ? candidate.constraint : undefined,
     name: typeof candidate.name === "string" ? candidate.name : "UnknownError",
