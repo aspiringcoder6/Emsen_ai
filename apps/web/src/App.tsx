@@ -152,7 +152,7 @@ export function App() {
         <main className="flow-canvas min-h-[calc(100vh-76px)] p-4 sm:p-6 xl:p-8">
           <div className="mx-auto max-w-[1500px]">
             {activeItem === "overview" ? (
-              <DashboardPage compact={chatOpen} />
+              <DashboardPage compact={chatOpen} userName={authUser.name} onNavigate={setActiveItem} />
             ) : activeItem === "creator-dna" ? (
               <CreatorDnaPage onStartCreating={() => setActiveItem("direction")} />
             ) : activeItem === "settings" ? (

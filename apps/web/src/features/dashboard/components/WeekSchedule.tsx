@@ -1,8 +1,10 @@
 import { CalendarRange } from "lucide-react";
 import { useState } from "react";
 import {
+  type DashboardDestination,
+  type DashboardSnapshot,
   getCurrentWeek,
-  weeklyEvents,
+  getWeekEvents,
   type ScheduleKind,
 } from "../dashboardData";
 import { ProjectOverview } from "./ProjectOverview";
@@ -10,13 +12,14 @@ import { ScheduleEventList } from "./ScheduleEventList";
 import { ScheduleFilters } from "./ScheduleFilters";
 import { WeekCalendarStrip } from "./WeekCalendarStrip";
 
-export function WeekSchedule({ compact }: { compact: boolean }) {
+export function WeekSchedule({ compact, snapshot, onNavigate }: { compact: boolean; snapshot: DashboardSnapshot; onNavigate: (destination: DashboardDestination) => void }) {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [activeFilter, setActiveFilter] = useState<"all" | ScheduleKind>("all");
   const { days } = getCurrentWeek();
+  const events = getWeekEvents(snapshot, days);
   const firstDay = days[0];
   const lastDay = days[6];
-  const scopedEvents = weeklyEvents.filter(
+  const scopedEvents = events.filter(
     (event) => selectedDay === null || event.dayIndex === selectedDay,
   );
   const visibleEvents = scopedEvents.filter(
@@ -69,6 +72,7 @@ export function WeekSchedule({ compact }: { compact: boolean }) {
 
       <WeekCalendarStrip
         days={days}
+        events={events}
         onSelectDay={(dayIndex) => {
           setSelectedDay(dayIndex);
           setActiveFilter("all");
@@ -83,7 +87,7 @@ export function WeekSchedule({ compact }: { compact: boolean }) {
       >
         <div className="min-w-0 rounded-[20px] border border-[#F0DDDA] bg-[#FFFDF8] p-4 sm:p-5">
           {showProjectOverview ? (
-            <ProjectOverview compact={compact} />
+            <ProjectOverview compact={compact} scripts={snapshot.scriptWorkspace.scripts} onNavigate={onNavigate} />
           ) : (
             <ScheduleEventList
               activeFilter={activeFilter}
@@ -91,6 +95,7 @@ export function WeekSchedule({ compact }: { compact: boolean }) {
               events={visibleEvents}
               onClearDay={() => setSelectedDay(null)}
               selectedDate={selectedDate}
+              onNavigate={onNavigate}
             />
           )}
         </div>

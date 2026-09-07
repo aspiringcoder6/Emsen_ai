@@ -1,5 +1,6 @@
 import { CalendarDays } from "lucide-react";
 import {
+  type DashboardDestination,
   scheduleKindConfig,
   type ScheduleKind,
   type WeekDay,
@@ -12,6 +13,7 @@ type ScheduleEventListProps = {
   events: WeekEvent[];
   onClearDay: () => void;
   selectedDate: Date | null;
+  onNavigate: (destination: DashboardDestination) => void;
 };
 
 export function ScheduleEventList({
@@ -20,6 +22,7 @@ export function ScheduleEventList({
   events,
   onClearDay,
   selectedDate,
+  onNavigate,
 }: ScheduleEventListProps) {
   return (
     <>
@@ -58,8 +61,10 @@ export function ScheduleEventList({
           const eventDay = days[event.dayIndex];
 
           return (
-            <article
-              className="flex flex-col gap-4 rounded-2xl border border-[#F0DFDB] bg-white p-4 sm:flex-row sm:items-center"
+            <button
+              type="button"
+              onClick={() => onNavigate(event.destination)}
+              className="flex w-full flex-col gap-4 rounded-2xl border border-[#F0DFDB] bg-white p-4 text-left transition hover:border-[#A8C99B] hover:shadow-[0_8px_24px_rgba(70,168,45,0.07)] sm:flex-row sm:items-center"
               key={`${event.dayIndex}-${event.time}-${event.title}`}
             >
               <div className="flex shrink-0 items-center gap-3 sm:w-[116px]">
@@ -84,16 +89,15 @@ export function ScheduleEventList({
                   >
                     {config.label}
                   </span>
-                  <span className="text-[11px] text-[#94A794]">{event.creator}</span>
                 </div>
                 <h4 className="mt-2 text-sm font-bold text-[#31583A]">{event.title}</h4>
-                <p className="mt-1 text-xs text-[#829782]">{event.project}</p>
+                <p className="mt-1 text-xs text-[#829782]">{event.subtitle}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2 text-xs font-bold text-[#607760]">
                 <span className="h-2 w-2 rounded-full bg-[#67B86F]" />
                 {event.status}
               </div>
-            </article>
+            </button>
           );
         })}
 

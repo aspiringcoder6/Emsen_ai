@@ -1,24 +1,46 @@
 import {
-  Clapperboard,
+  CalendarDays,
   Compass,
+  Dna,
   FileText,
-  ListTodo,
   PenLine,
-  Send,
-  Video,
   type LucideIcon,
 } from "lucide-react";
+import type {
+  ContentPlanStateDto,
+  CreatorDnaStateDto,
+  DirectionStateDto,
+  ScriptDocumentDto,
+  ScriptWorkspaceDto,
+} from "@creator-flow/contracts";
 
-export type ScheduleKind = "plan" | "publish" | "production";
+export type DashboardDestination = "creator-dna" | "direction" | "content-plan" | "scripts";
+export type ScheduleKind = "plan" | "script";
+
+export type DashboardSnapshot = {
+  creatorDna: CreatorDnaStateDto;
+  direction: DirectionStateDto;
+  plan: ContentPlanStateDto;
+  scriptWorkspace: ScriptWorkspaceDto;
+};
+
+export type ProductProgressStep = {
+  id: DashboardDestination;
+  label: string;
+  caption: string;
+  icon: LucideIcon;
+  state: "done" | "active" | "waiting";
+};
 
 export type WeekEvent = {
+  id: string;
   dayIndex: number;
   time: string;
   kind: ScheduleKind;
-  project: string;
-  creator: string;
   title: string;
+  subtitle: string;
   status: string;
+  destination: DashboardDestination;
 };
 
 export type WeekDay = {
@@ -28,173 +50,21 @@ export type WeekDay = {
   isToday: boolean;
 };
 
-export const productProgressSteps: Array<{
-  label: string;
-  caption: string;
-  icon: LucideIcon;
-  state: "done" | "active" | "waiting";
-}> = [
-  { label: "Định hướng", caption: "Hoàn tất", icon: Compass, state: "done" },
-  { label: "Kế hoạch", caption: "Hoàn tất", icon: FileText, state: "done" },
-  {
-    label: "Kịch bản",
-    caption: "Đang thực hiện",
-    icon: PenLine,
-    state: "active",
-  },
-  {
-    label: "Storyboard",
-    caption: "Chờ xử lý",
-    icon: Clapperboard,
-    state: "waiting",
-  },
-  { label: "Video", caption: "Chờ xử lý", icon: Video, state: "waiting" },
-];
-
-export const weeklyProjects = [
-  {
-    name: "Summer Skincare Routine",
-    creator: "Linh Beauty",
-    stage: "Đang viết kịch bản",
-    progress: 64,
-    color: "#46A82D",
-    tasks: "4/6 đầu việc",
-    schedule: "2 lịch đăng · 1 buổi lên plan",
-  },
-  {
-    name: "Một ngày làm Founder",
-    creator: "Minh Lifestyle",
-    stage: "Chờ duyệt storyboard",
-    progress: 82,
-    color: "#67B86F",
-    tasks: "5/6 đầu việc",
-    schedule: "1 lịch đăng · 1 buổi quay",
-  },
-  {
-    name: "Review máy pha cà phê Mini",
-    creator: "Home with Vy",
-    stage: "Đang dựng video",
-    progress: 91,
-    color: "#82C95B",
-    tasks: "6/7 đầu việc",
-    schedule: "2 lịch đăng · 1 bản review",
-  },
-];
-
-export const weeklyEvents: WeekEvent[] = [
-  {
-    dayIndex: 0,
-    time: "09:00",
-    kind: "plan",
-    project: "Summer Skincare Routine",
-    creator: "Linh Beauty",
-    title: "Chốt content pillars và lịch 7 ngày",
-    status: "Đã hoàn tất",
-  },
-  {
-    dayIndex: 1,
-    time: "14:30",
-    kind: "production",
-    project: "Một ngày làm Founder",
-    creator: "Minh Lifestyle",
-    title: "Duyệt kịch bản và shot list",
-    status: "Đã duyệt",
-  },
-  {
-    dayIndex: 2,
-    time: "09:30",
-    kind: "plan",
-    project: "Review máy pha cà phê Mini",
-    creator: "Home with Vy",
-    title: "Lên plan nội dung và CTA",
-    status: "Đang diễn ra",
-  },
-  {
-    dayIndex: 2,
-    time: "15:00",
-    kind: "publish",
-    project: "Summer Skincare Routine",
-    creator: "Linh Beauty",
-    title: "Đăng Reel: Morning skincare 5 phút",
-    status: "Đã lên lịch",
-  },
-  {
-    dayIndex: 2,
-    time: "16:30",
-    kind: "production",
-    project: "Một ngày làm Founder",
-    creator: "Minh Lifestyle",
-    title: "Review storyboard vòng 1",
-    status: "Chờ duyệt",
-  },
-  {
-    dayIndex: 3,
-    time: "11:00",
-    kind: "publish",
-    project: "Một ngày làm Founder",
-    creator: "Minh Lifestyle",
-    title: "Đăng TikTok: Behind the scenes",
-    status: "Đã lên lịch",
-  },
-  {
-    dayIndex: 4,
-    time: "10:00",
-    kind: "production",
-    project: "Summer Skincare Routine",
-    creator: "Linh Beauty",
-    title: "Quay video theo storyboard đã duyệt",
-    status: "Sắp diễn ra",
-  },
-  {
-    dayIndex: 4,
-    time: "19:30",
-    kind: "publish",
-    project: "Review máy pha cà phê Mini",
-    creator: "Home with Vy",
-    title: "Đăng Reel: Pha cà phê tại nhà",
-    status: "Đã lên lịch",
-  },
-  {
-    dayIndex: 5,
-    time: "09:00",
-    kind: "production",
-    project: "Review máy pha cà phê Mini",
-    creator: "Home with Vy",
-    title: "Duyệt bản dựng cuối",
-    status: "Sắp diễn ra",
-  },
-  {
-    dayIndex: 6,
-    time: "20:00",
-    kind: "publish",
-    project: "Summer Skincare Routine",
-    creator: "Linh Beauty",
-    title: "Đăng TikTok: Night routine",
-    status: "Đã lên lịch",
-  },
-];
-
 export const scheduleKindConfig: Record<
   ScheduleKind,
   { label: string; color: string; surface: string; icon: LucideIcon }
 > = {
   plan: {
-    label: "Lên kế hoạch",
-    color: "#46A82D",
-    surface: "#FFE9E6",
-    icon: ListTodo,
-  },
-  publish: {
-    label: "Lịch đăng bài",
+    label: "Kế hoạch nội dung",
     color: "#3F7E49",
     surface: "#EEF8EF",
-    icon: Send,
+    icon: CalendarDays,
   },
-  production: {
-    label: "Sản xuất",
+  script: {
+    label: "Kịch bản",
     color: "#A66E94",
     surface: "#F7EDF4",
-    icon: Clapperboard,
+    icon: PenLine,
   },
 };
 
@@ -209,13 +79,85 @@ export function getCurrentWeek() {
   const days: WeekDay[] = labels.map((label, index) => {
     const date = new Date(monday);
     date.setDate(monday.getDate() + index);
-    return {
-      index,
-      label,
-      date,
-      isToday: date.toDateString() === today.toDateString(),
-    };
+    return { index, label, date, isToday: date.toDateString() === today.toDateString() };
   });
-
   return { days, today };
+}
+
+export function getProductProgress(snapshot: DashboardSnapshot): ProductProgressStep[] {
+  const dnaDone = snapshot.creatorDna.status === "completed" || snapshot.creatorDna.status === "skipped";
+  const approvedDirection = snapshot.direction.versions.find((version) => version.status === "approved");
+  const approvedPlan = snapshot.plan.versions.find((version) => version.status === "approved");
+  const visibleScripts = snapshot.scriptWorkspace.scripts.filter((script) => script.status !== "archived");
+  const workingScripts = visibleScripts.filter((script) => script.status !== "completed");
+  const completedScripts = visibleScripts.filter((script) => script.status === "completed");
+
+  return [
+    {
+      id: "creator-dna",
+      label: "Creator DNA",
+      caption: snapshot.creatorDna.status === "completed" ? "Đã hoàn thiện" : snapshot.creatorDna.status === "skipped" ? "Đã để làm sau" : snapshot.creatorDna.status === "in-progress" ? `Đang làm · ${snapshot.creatorDna.currentStep}/5` : "Chưa hoàn thiện",
+      icon: Dna,
+      state: dnaDone ? "done" : "active",
+    },
+    {
+      id: "direction",
+      label: "Định hướng",
+      caption: approvedDirection ? `Đã chốt · phiên bản ${approvedDirection.version}` : snapshot.direction.versions.length ? "Có bản nháp" : "Chưa bắt đầu",
+      icon: Compass,
+      state: approvedDirection ? "done" : dnaDone ? "active" : "waiting",
+    },
+    {
+      id: "content-plan",
+      label: "Kế hoạch tuần",
+      caption: approvedPlan ? "Đã chốt 7 nội dung" : snapshot.plan.versions.length ? "Có bản nháp" : "Chưa lên kế hoạch",
+      icon: FileText,
+      state: approvedPlan ? "done" : approvedDirection ? "active" : "waiting",
+    },
+    {
+      id: "scripts",
+      label: "Kịch bản",
+      caption: workingScripts.length ? `${workingScripts.length} bản đang làm` : completedScripts.length ? `${completedScripts.length} bản đã thực hiện` : "Sẵn sàng để viết",
+      icon: PenLine,
+      state: workingScripts.length ? "active" : completedScripts.length ? "done" : approvedPlan ? "active" : "waiting",
+    },
+  ];
+}
+
+function dateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function scriptStatus(script: ScriptDocumentDto) {
+  return script.status === "draft" ? "Bản nháp" : script.status === "in-progress" ? "Đang thực hiện" : script.status === "ready" ? "Sẵn sàng quay" : script.status === "completed" ? "Đã thực hiện" : "Đã lưu trữ";
+}
+
+export function getWeekEvents(snapshot: DashboardSnapshot, days: WeekDay[]): WeekEvent[] {
+  const indexByDate = new Map(days.map((day) => [dateKey(day.date), day.index]));
+  const approvedPlan = snapshot.plan.versions.find((version) => version.status === "approved");
+  const planEvents: WeekEvent[] = approvedPlan ? approvedPlan.items.map((item) => ({
+    id: `plan-${approvedPlan.id}-${item.dayIndex}`,
+    dayIndex: item.dayIndex,
+    time: "Cả ngày",
+    kind: "plan",
+    title: item.title,
+    subtitle: `${item.platform} · ${item.format} · ${item.objective}`,
+    status: "Đã lên kế hoạch",
+    destination: "content-plan",
+  })) : [];
+  const scriptEvents: WeekEvent[] = snapshot.scriptWorkspace.scripts.flatMap((script) => {
+    const dayIndex = script.settings.scheduledFor ? indexByDate.get(script.settings.scheduledFor) : undefined;
+    if (dayIndex === undefined || script.status === "archived") return [];
+    return [{
+      id: `script-${script.id}`,
+      dayIndex,
+      time: "Kịch bản",
+      kind: "script" as const,
+      title: script.title,
+      subtitle: `${script.settings.platform || "Chưa chọn nền tảng"} · ${script.content.storyboard.length} keyframe`,
+      status: scriptStatus(script),
+      destination: "scripts" as const,
+    }];
+  });
+  return [...planEvents, ...scriptEvents].sort((a, b) => a.dayIndex - b.dayIndex || a.kind.localeCompare(b.kind));
 }

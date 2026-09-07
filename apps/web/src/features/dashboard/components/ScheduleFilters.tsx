@@ -1,15 +1,12 @@
 import {
   CalendarDays,
-  Clapperboard,
   ListTodo,
-  Send,
+  PenLine,
   SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import {
   scheduleKindConfig,
-  weeklyEvents,
-  weeklyProjects,
   type ScheduleKind,
   type WeekEvent,
 } from "../dashboardData";
@@ -29,21 +26,15 @@ const filterItems: Array<{
   { id: "all", label: "Tất cả hoạt động", icon: CalendarDays, color: "#46A82D" },
   {
     id: "plan",
-    label: "Lên kế hoạch",
+    label: "Kế hoạch nội dung",
     icon: ListTodo,
     color: scheduleKindConfig.plan.color,
   },
   {
-    id: "publish",
-    label: "Lịch đăng bài",
-    icon: Send,
-    color: scheduleKindConfig.publish.color,
-  },
-  {
-    id: "production",
-    label: "Sản xuất",
-    icon: Clapperboard,
-    color: scheduleKindConfig.production.color,
+    id: "script",
+    label: "Kịch bản",
+    icon: PenLine,
+    color: scheduleKindConfig.script.color,
   },
 ];
 
@@ -98,20 +89,20 @@ export function ScheduleFilters({
         </p>
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
           <div>
-            <p className="text-xl font-bold">{weeklyProjects.length}</p>
-            <p className="mt-1 text-[9px] text-white/65">Project</p>
+            <p className="text-xl font-bold">{events.length}</p>
+            <p className="mt-1 text-[9px] text-white/65">Hoạt động</p>
           </div>
           <div>
             <p className="text-xl font-bold">
-              {weeklyEvents.filter((event) => event.kind === "publish").length}
+              {events.filter((event) => event.kind === "plan").length}
             </p>
-            <p className="mt-1 text-[9px] text-white/65">Lịch đăng</p>
+            <p className="mt-1 text-[9px] text-white/65">Nội dung</p>
           </div>
           <div>
             <p className="text-xl font-bold">
-              {weeklyEvents.filter((event) => event.kind === "plan").length}
+              {events.filter((event) => event.kind === "script").length}
             </p>
-            <p className="mt-1 text-[9px] text-white/65">Lên plan</p>
+            <p className="mt-1 text-[9px] text-white/65">Kịch bản</p>
           </div>
         </div>
       </div>

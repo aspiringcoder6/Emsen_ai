@@ -4,8 +4,15 @@ import {
   WandSparkles,
 } from "lucide-react";
 import { EmsenAvatar } from "../../../components/branding/EmsenAvatar";
+import type { DashboardDestination, ProductProgressStep } from "../dashboardData";
 
-export function FlowHero({ compact }: { compact: boolean }) {
+export function FlowHero({ compact, userName, nextStep, hasScripts, onNavigate }: {
+  compact: boolean;
+  userName: string;
+  nextStep: ProductProgressStep;
+  hasScripts: boolean;
+  onNavigate: (destination: DashboardDestination) => void;
+}) {
   return (
     <section className="relative overflow-hidden rounded-[30px] bg-gradient-to-br from-[#285B35] via-[#35743D] to-[#4B8D46] px-6 py-8 text-white shadow-[0_24px_60px_rgba(47,104,55,0.2)] sm:px-9 sm:py-10 xl:min-h-[310px]">
       <div className="hero-current hero-current-one" />
@@ -23,7 +30,7 @@ export function FlowHero({ compact }: { compact: boolean }) {
             compact ? "text-3xl sm:text-4xl" : "text-3xl sm:text-4xl xl:text-[44px]"
           }`}
         >
-          Từ chất riêng của bạn
+          {userName ? `${userName}, từ chất riêng của bạn` : "Từ chất riêng của bạn"}
           <br />
           đến nội dung <span className="text-[#FFA8BA]">nở hoa.</span>
         </h2>
@@ -35,15 +42,17 @@ export function FlowHero({ compact }: { compact: boolean }) {
           <button
             className="inline-flex h-11 items-center gap-2 rounded-xl bg-white px-5 text-sm font-bold text-[#3D9531] shadow-lg transition hover:-translate-y-0.5"
             type="button"
+            onClick={() => onNavigate(nextStep.id)}
           >
             <WandSparkles size={18} />
-            Gieo ý tưởng mới
+            {nextStep.state === "done" ? "Mở hành trình sáng tạo" : `Tiếp tục ${nextStep.label}`}
           </button>
           <button
             className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 text-sm font-bold text-white transition hover:bg-white/10"
             type="button"
+            onClick={() => onNavigate(hasScripts ? "scripts" : "content-plan")}
           >
-            Xem hành trình
+            {hasScripts ? "Xem kịch bản đang làm" : "Mở kế hoạch tuần"}
             <ChevronRight size={17} />
           </button>
         </div>
