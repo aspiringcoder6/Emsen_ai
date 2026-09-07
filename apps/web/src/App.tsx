@@ -21,6 +21,7 @@ import { DirectionPage } from "./pages/DirectionPage";
 import { ContentPlanPage } from "./pages/ContentPlanPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ScriptsPage } from "./pages/ScriptsPage";
 import type { AuthRequest, AuthUser } from "./types/app";
 
 export function App() {
@@ -160,11 +161,12 @@ export function App() {
                   setAiPreferencesRevision((current) => current + 1)
                 }
               />
-            ) : activeItem !== "direction" && activeItem !== "content-plan" ? (
+            ) : activeItem !== "direction" && activeItem !== "content-plan" && activeItem !== "scripts" ? (
               <PlaceholderPage item={currentItem} />
             ) : null}
             <DirectionPage key={authUser.id} active={activeItem === "direction"} compact={chatOpen} onOpenDna={() => setActiveItem("creator-dna")} onContentPlan={() => setActiveItem("content-plan")} />
             <ContentPlanPage key={`plan-${authUser.id}`} active={activeItem === "content-plan"} onDirection={() => setActiveItem("direction")} onSettings={() => setActiveItem("settings")} />
+            <ScriptsPage key={`scripts-${authUser.id}`} active={activeItem === "scripts"} onSettings={() => setActiveItem("settings")} />
           </div>
         </main>
       </div>

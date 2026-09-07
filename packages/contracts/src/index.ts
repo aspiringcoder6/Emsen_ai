@@ -1,5 +1,6 @@
 export type * from "./direction.js";
 export type * from "./contentPlan.js";
+export type * from "./script.js";
 
 export type ServiceStatus = {
   service: string;

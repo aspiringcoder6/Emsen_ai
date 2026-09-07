@@ -8,6 +8,7 @@ import { creatorDnaRouter } from "./modules/creator-dna/creatorDna.routes.js";
 import { directionRouter } from "./modules/direction/direction.routes.js";
 import { contentPlanRouter } from "./modules/content-plan/contentPlan.routes.js";
 import { aiKeyRouter } from "./modules/ai/aiKey.routes.js";
+import { scriptRouter } from "./modules/scripts/script.routes.js";
 import { errorHandler, HttpError, notFoundHandler } from "./shared/http.js";
 
 function isAllowedOrigin(origin: string) {
@@ -39,7 +40,7 @@ export function createApp() {
       },
     }),
   );
-  app.use(express.json({ limit: "128kb" }));
+  app.use(express.json({ limit: "256kb" }));
 
   app.use((request, _response, next) => {
     if (["GET", "HEAD", "OPTIONS"].includes(request.method)) {
@@ -75,6 +76,7 @@ export function createApp() {
   app.use("/api/creator-dna", creatorDnaRouter);
   app.use("/api/direction", directionRouter);
   app.use("/api/content-plan", contentPlanRouter);
+  app.use("/api/scripts", scriptRouter);
   app.use("/api/settings/ai-key", aiKeyRouter);
 
   app.use(notFoundHandler);
