@@ -16,17 +16,17 @@ import { createSession } from "./session.js";
 type UserRow = {
   created_at: Date;
   display_name: string;
-  email: string;
   id: string;
   password_hash: string;
+  phone_number: string | null;
 };
 
 function mapUser(row: UserRow): AuthUserDto {
   return {
     createdAt: row.created_at.toISOString(),
-    email: row.email,
     id: row.id,
     name: row.display_name,
+    phoneNumber: row.phone_number,
   };
 }
 
@@ -40,11 +40,11 @@ export async function signup(input: SignupRequestDto) {
     await client.query("BEGIN");
     const userResult = await client.query<UserRow>(
       `
-        INSERT INTO users (id, email, display_name, password_hash, terms_accepted_at)
+        INSERT INTO users (id, phone_number, display_name, password_hash, terms_accepted_at)
         VALUES ($1, $2, $3, $4, NOW())
-        RETURNING id, email, display_name, password_hash, created_at
+        RETURNING id, phone_number, display_name, password_hash, created_at
       `,
-      [userId, input.email, input.name, passwordHash],
+      [userId, input.phoneNumber, input.name, passwordHash],
     );
     const userRow = userResult.rows[0]!;
     user = mapUser(userRow);
@@ -62,7 +62,11 @@ export async function signup(input: SignupRequestDto) {
   } catch (error) {
     await client.query("ROLLBACK");
     if ((error as DatabaseError).code === "23505") {
-      throw new HttpError(409, "EMAIL_ALREADY_EXISTS", "Email này đã được sử dụng.");
+      throw new HttpError(
+        409,
+        "PHONE_NUMBER_ALREADY_EXISTS",
+        "Số điện thoại này đã được sử dụng.",
+      );
     }
     throw error;
   } finally {
@@ -86,12 +90,14 @@ export async function signup(input: SignupRequestDto) {
 
 export async function login(input: LoginRequestDto) {
   const result = await database.query<UserRow>(
-    `SELECT id, email, display_name, password_hash, created_at FROM users WHERE email = $1`,
-    [input.email],
+    `SELECT id, phone_number, display_name, password_hash, created_at
+     FROM users
+     WHERE phone_number = $1`,
+    [input.phoneNumber],
   );
   const row = result.rows[0];
   if (!row || !(await verifyPassword(input.password, row.password_hash))) {
-    throw new HttpError(401, "INVALID_CREDENTIALS", "Email hoặc mật khẩu chưa đúng.");
+    throw new HttpError(401, "INVALID_CREDENTIALS", "Số điện thoại hoặc mật khẩu chưa đúng.");
   }
 
   const [creatorDna, session] = await Promise.all([
@@ -107,7 +113,7 @@ export async function login(input: LoginRequestDto) {
 
 export async function getAuthResponse(userId: string): Promise<AuthResponseDto> {
   const result = await database.query<UserRow>(
-    `SELECT id, email, display_name, password_hash, created_at FROM users WHERE id = $1`,
+    `SELECT id, phone_number, display_name, password_hash, created_at FROM users WHERE id = $1`,
     [userId],
   );
   const row = result.rows[0];

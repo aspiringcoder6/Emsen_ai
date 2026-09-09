@@ -316,7 +316,7 @@ export function CreatorDnaPage({ onStartCreating }: CreatorDnaPageProps) {
     <div className="space-y-5">
       {errorBanner}
       <CreatorDnaQuestionCard
-        canContinue={!question.required || hasAnswer(value)}
+        canContinue={hasAnswer(value)}
         currentStep={state.currentStep}
         onBack={goBack}
         onChange={updateAnswer}

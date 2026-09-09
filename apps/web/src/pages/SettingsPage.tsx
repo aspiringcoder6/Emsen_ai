@@ -260,7 +260,7 @@ export function SettingsPage({ onPreferencesChanged }: SettingsPageProps) {
           </div>
           <p className="mt-3 text-xs leading-6 text-[#748A74]">
             Khi trả lời, Gemini nhận Creator DNA và các tín hiệu đã xác nhận gần đây.
-            Email và mật khẩu không bao giờ được đưa vào prompt.
+            Số điện thoại và mật khẩu không bao giờ được đưa vào prompt.
           </p>
         </div>
       </div>

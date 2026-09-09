@@ -12,16 +12,16 @@ export type AuthUser = AuthUserDto;
 
 export type AuthRequest =
   | {
-      email: string;
       password: string;
+      phoneNumber: string;
       remember: boolean;
       source: "login";
     }
   | {
       acceptedTerms: boolean;
       creatorDna: "start" | "skip";
-      email: string;
       name: string;
       password: string;
+      phoneNumber: string;
       source: "signup";
     };

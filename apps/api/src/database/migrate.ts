@@ -8,6 +8,7 @@ import {
   initialSchemaSql,
   directionSchemaSql,
   legacyCamelCaseUserColumnsSql,
+  phoneAuthSchemaSql,
 } from "./schema.js";
 
 const migrations = [
@@ -19,6 +20,7 @@ const migrations = [
   { sql: authSchemaCompatibilitySql, version: 6 },
   { sql: legacyCamelCaseUserColumnsSql, version: 7 },
   { sql: scriptSchemaSql, version: 8 },
+  { sql: phoneAuthSchemaSql, version: 9 },
 ];
 
 export async function migrateDatabase() {

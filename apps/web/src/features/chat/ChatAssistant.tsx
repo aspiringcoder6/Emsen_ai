@@ -6,6 +6,7 @@ import {
   Minus,
   RefreshCw,
   Sparkles,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EmsenAvatar } from "../../components/branding/EmsenAvatar";
@@ -96,6 +97,7 @@ export function ChatAssistant({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
   const [draft, setDraft] = useState(() =>
     typeof window === "undefined"
       ? ""
@@ -216,9 +218,66 @@ export function ChatAssistant({
 
   const messages = chat?.messages ?? [];
   const aiLabel = chat?.ai.configured ? "Gemini" : "Fallback";
+  const latestMessage = messages.at(-1);
+  const pendingQuestion =
+    latestMessage?.role === "assistant" &&
+    latestMessage.collectionIntent &&
+    latestMessage.id !== dismissedQuestionId
+      ? latestMessage
+      : null;
+  const pendingQuestionText = pendingQuestion?.content.split(/\n\s*\n/).at(-1)?.trim();
+
+  useEffect(() => {
+    if (open && pendingQuestion) {
+      setDismissedQuestionId(pendingQuestion.id);
+    }
+  }, [open, pendingQuestion]);
 
   return (
     <>
+      {!open && pendingQuestion && pendingQuestionText ? (
+        <div
+          aria-live="polite"
+          className="chat-message-enter fixed bottom-24 left-4 right-4 z-[54] rounded-[22px] border border-[#D7E7D1] bg-white p-3 shadow-[0_18px_45px_rgba(40,77,49,0.2)] sm:bottom-[92px] sm:left-auto sm:right-6 sm:w-[350px]"
+          role="status"
+        >
+          <span className="absolute -bottom-2 right-8 h-4 w-4 rotate-45 border-b border-r border-[#D7E7D1] bg-white" />
+          <button
+            aria-label="Ẩn câu hỏi của Emsen"
+            className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-lg text-[#91A38F] transition hover:bg-[#F1F7ED] hover:text-[#526952]"
+            onClick={() => setDismissedQuestionId(pendingQuestion.id)}
+            type="button"
+          >
+            <X size={14} />
+          </button>
+          <button
+            className="flex w-full items-start gap-3 pr-6 text-left"
+            onClick={onOpen}
+            type="button"
+          >
+            <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[#F0F8EC]">
+              <EmsenAvatar
+                alt="Emsen đang hỏi bạn"
+                className="h-14 w-14"
+                emotion="wonder"
+              />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#46A82D]">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-[#67B86F]" />
+                Emsen đang hỏi bạn
+              </span>
+              <span className="mt-1 line-clamp-3 block text-sm leading-5 text-[#526952]">
+                {pendingQuestionText}
+              </span>
+              <span className="mt-1.5 block text-[11px] font-bold text-[#3F7D3D]">
+                Trả lời Emsen →
+              </span>
+            </span>
+          </button>
+        </div>
+      ) : null}
+
       <button
         aria-label="Mở emsen buddy"
         className={`fixed bottom-5 right-5 z-[55] flex h-14 items-center gap-3 rounded-2xl bg-gradient-to-r from-[#46A82D] to-[#82C95B] px-4 text-white shadow-[0_18px_38px_rgba(70,168,45,0.32)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_44px_rgba(70,168,45,0.38)] sm:bottom-6 sm:right-6 ${

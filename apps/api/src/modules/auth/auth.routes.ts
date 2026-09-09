@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { LoginRequestDto, SignupRequestDto } from "@creator-flow/contracts";
 import { HttpError } from "../../shared/http.js";
 import { getAuthResponse, login, signup } from "./auth.service.js";
+import { parsePhoneNumber } from "./phoneNumber.js";
 import { authRateLimit } from "./rateLimit.js";
 import {
   clearSessionCookie,
@@ -35,14 +36,6 @@ function requiredRawString(body: Record<string, unknown>, key: string) {
   return value;
 }
 
-function parseEmail(value: string) {
-  const email = value.toLocaleLowerCase("vi-VN");
-  if (email.length > 254 || !/^\S+@\S+\.\S+$/.test(email)) {
-    throw new HttpError(400, "INVALID_EMAIL", "Vui lòng nhập một địa chỉ email hợp lệ.");
-  }
-  return email;
-}
-
 function parsePassword(value: string) {
   if (value.length < 8 || value.length > 128) {
     throw new HttpError(400, "INVALID_PASSWORD", "Mật khẩu cần có từ 8 đến 128 ký tự.");
@@ -67,17 +60,17 @@ function parseSignup(bodyValue: unknown): SignupRequestDto {
   return {
     acceptedTerms: true,
     creatorDnaChoice: choice,
-    email: parseEmail(requiredString(body, "email")),
     name,
     password: parsePassword(requiredRawString(body, "password")),
+    phoneNumber: parsePhoneNumber(requiredString(body, "phoneNumber")),
   };
 }
 
 function parseLogin(bodyValue: unknown): LoginRequestDto {
   const body = objectBody(bodyValue);
   return {
-    email: parseEmail(requiredString(body, "email")),
     password: parsePassword(requiredRawString(body, "password")),
+    phoneNumber: parsePhoneNumber(requiredString(body, "phoneNumber")),
     remember: body.remember === true,
   };
 }

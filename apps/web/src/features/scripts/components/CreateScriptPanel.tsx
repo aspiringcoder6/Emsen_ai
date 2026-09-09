@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { CreateScriptRequestDto, ScriptScheduleOptionDto } from "@creator-flow/contracts";
 import { CalendarDays, FilePlus2, LoaderCircle, Sparkles, X } from "lucide-react";
+import { EmsenAvatar } from "../../../components/branding/EmsenAvatar";
 import { formatScriptDate } from "../scriptConfig";
 
 const inputClass = "mt-2 w-full rounded-xl border border-[#E6D4CE] bg-white px-3 py-2.5 text-sm font-normal text-[#31583A]";
@@ -56,26 +57,23 @@ export function CreateScriptPanel({
 
   const valid = source === "schedule" ? Boolean(selected) : title.trim().length >= 1;
   return (
-    <section className="rounded-[28px] border border-[#CFE1C8] bg-gradient-to-br from-[#F5FAF1] via-white to-[#FFF0EC] p-5 shadow-[0_18px_55px_rgba(67,104,67,0.12)] sm:p-7">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#3F8240]">Kịch bản mới</p>
-          <h3 className="mt-2 text-2xl font-bold text-[#284D31]">Bắt đầu từ một hạt giống.</h3>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#748A74]">Chọn một nội dung trong lịch đã chốt, hoặc mở một trang trắng kèm lịch mới.</p>
+    <section className="rounded-[26px] border border-[#CFE1C8] bg-gradient-to-br from-[#F5FAF1] via-white to-[#FFF0EC] p-5 shadow-[0_18px_55px_rgba(67,104,67,0.12)] sm:p-6">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <EmsenAvatar activity="idea" className="h-16 w-16 shrink-0" />
+          <div><p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#3F8240]">Kịch bản mới</p><h3 className="mt-1 text-xl font-bold text-[#284D31] sm:text-2xl">Bạn muốn bắt đầu từ đâu?</h3></div>
         </div>
         <button type="button" onClick={onClose} aria-label="Đóng" className="rounded-xl border border-[#DDE8D6] bg-white p-2 text-[#5E755E]"><X size={18} /></button>
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        <button type="button" onClick={() => setSource("schedule")} disabled={!scheduleOptions.length} className={`rounded-2xl border p-4 text-left transition disabled:opacity-40 ${source === "schedule" ? "border-[#72B65D] bg-[#EEF8E9]" : "border-[#E5DED8] bg-white"}`}>
-          <CalendarDays size={20} className="text-[#3F8240]" />
-          <span className="mt-3 block text-sm font-bold">Từ lịch nội dung</span>
-          <span className="mt-1 block text-xs leading-5 text-[#748A74]">Mang theo hook, CTA, nền tảng và ngày dự kiến.</span>
+      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+        <button type="button" onClick={() => setSource("schedule")} disabled={!scheduleOptions.length} className={`flex items-center gap-3 rounded-2xl border p-3.5 text-left transition disabled:opacity-40 ${source === "schedule" ? "border-[#72B65D] bg-[#EEF8E9]" : "border-[#E5DED8] bg-white"}`}>
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#3F8240]"><CalendarDays size={19} /></span>
+          <span><strong className="block text-sm">Từ lịch nội dung</strong><small className="mt-0.5 block text-[11px] font-normal text-[#748A74]">Dùng ý tưởng đã lên lịch</small></span>
         </button>
-        <button type="button" onClick={() => setSource("new")} className={`rounded-2xl border p-4 text-left transition ${source === "new" ? "border-[#72B65D] bg-[#EEF8E9]" : "border-[#E5DED8] bg-white"}`}>
-          <FilePlus2 size={20} className="text-[#3F8240]" />
-          <span className="mt-3 block text-sm font-bold">Kịch bản mới tinh</span>
-          <span className="mt-1 block text-xs leading-5 text-[#748A74]">Tạo ý tưởng độc lập và đặt một lịch mới nếu muốn.</span>
+        <button type="button" onClick={() => setSource("new")} className={`flex items-center gap-3 rounded-2xl border p-3.5 text-left transition ${source === "new" ? "border-[#72B65D] bg-[#EEF8E9]" : "border-[#E5DED8] bg-white"}`}>
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#3F8240]"><FilePlus2 size={19} /></span>
+          <span><strong className="block text-sm">Ý tưởng mới</strong><small className="mt-0.5 block text-[11px] font-normal text-[#748A74]">Bắt đầu với trang trống</small></span>
         </button>
       </div>
 
@@ -95,7 +93,7 @@ export function CreateScriptPanel({
         </div>
       )}
 
-      <label className="mt-5 block text-xs font-bold">Bạn muốn kịch bản này đi theo hướng nào? · không bắt buộc<textarea className={inputClass} rows={3} maxLength={3000} value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="Ví dụ: gần gũi, vào thẳng nỗi đau, kết thúc bằng một câu hỏi để mở thảo luận…" /></label>
+      <label className="mt-5 block text-xs font-bold">Ghi chú cho kịch bản <span className="font-normal text-[#879487]">(không bắt buộc)</span><textarea className={inputClass} rows={2} maxLength={3000} value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="Ví dụ: gần gũi, đi thẳng vào vấn đề…" /></label>
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <button type="button" disabled={!aiConfigured} aria-pressed={useAi} onClick={() => setUseAi((value) => !value)} className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-40 ${useAi ? "border-[#6DAE58] bg-[#284D31] text-white" : "border-[#C8DBC1] bg-white text-[#31583A]"}`}><Sparkles size={16} /> {useAi ? "AI sẽ viết bản đầu" : "Nhờ AI gợi ý kịch bản"}</button>

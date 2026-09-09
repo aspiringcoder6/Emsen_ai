@@ -3,12 +3,20 @@ import type { DirectionSection } from "@creator-flow/contracts";
 import { requireAuth } from "../auth/session.js";
 import { HttpError } from "../../shared/http.js";
 import { object, parseBaseVersion, parseBrief, parseContent } from "./direction.schema.js";
-import { generateDirection, getDirectionState, saveDirection } from "./direction.service.js";
+import {
+  generateDirection,
+  generateDirectionGoalSuggestions,
+  getDirectionState,
+  saveDirection,
+} from "./direction.service.js";
 
 export const directionRouter = Router();
 directionRouter.use(requireAuth);
 directionRouter.get("/", async (request, response) => {
   response.json(await getDirectionState(request.auth!.userId));
+});
+directionRouter.post("/goal-suggestions", async (request, response) => {
+  response.json(await generateDirectionGoalSuggestions(request.auth!.userId));
 });
 directionRouter.post("/versions", async (request, response) => {
   const body = object(request.body);

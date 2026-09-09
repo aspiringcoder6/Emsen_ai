@@ -39,7 +39,7 @@ export function CreatorDnaIntro({
         <div className="relative z-10 max-w-3xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold text-[#DDF3D3]">
             <Sparkles size={14} />
-            CREATOR DNA · KHỞI ĐẦU NHẸ NHÀNG
+            CREATOR DNA - Điều đặc biệt về bạn
           </div>
           <div className="mt-7 flex flex-col gap-6 sm:flex-row sm:items-start">
             <div className="grid h-24 w-24 shrink-0 place-items-center rounded-[26px] bg-white/90 shadow-[0_14px_32px_rgba(70,168,45,0.22)]">
@@ -58,7 +58,7 @@ export function CreatorDnaIntro({
               <p className="mt-4 max-w-2xl text-sm leading-6 text-[#DCEED9] sm:text-base sm:leading-7">
                 {deferred
                   ? "Bạn đã chọn để bước này lại sau. emsen vẫn hoạt động bình thường và bạn có thể quay lại xây Creator DNA bất cứ lúc nào."
-                  : "Chỉ khoảng 3 phút để emsen có đủ điểm xuất phát, từ đó viết nội dung đúng phong cách và cá tính riêng của bạn hơn — thay vì một kịch bản AI chung chung."}
+                  : "Chỉ khoảng 3 phút để Emsen có đủ điểm xuất phát, từ đó viết nội dung đúng phong cách và cá tính riêng của bạn hơn, hãy giúp Emsen hiểu bạn hơn nhé."}
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
                 <button
@@ -66,7 +66,7 @@ export function CreatorDnaIntro({
                   onClick={onStart}
                   type="button"
                 >
-                  {deferred ? "Bắt đầu khi đã sẵn sàng" : "Bắt đầu · khoảng 3 phút"}
+                  {deferred ? "Bắt đầu khi đã sẵn sàng" : "Bắt đầu - khoảng 3 phút"}
                   <ArrowRight
                     className="transition-transform group-hover:translate-x-0.5"
                     size={17}
@@ -111,7 +111,6 @@ export function CreatorDnaIntro({
               Mức sẵn sàng
             </p>
             <p className="mt-1 text-3xl font-bold text-[#4C9355]">{insight.readiness}%</p>
-            <p className="mt-1 text-[10px] text-[#82927F]">Sẽ tăng sau 6 câu hỏi</p>
           </div>
         </section>
       ) : null}
@@ -121,7 +120,7 @@ export function CreatorDnaIntro({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#46A82D]">
-                HỎI ÍT, NHƯNG HỎI ĐÚNG
+                NHỮNG CÂU HỎI ĐƠN GIẢN NHƯNG TRỌNG TÂM
               </p>
               <h3 className="mt-1 text-xl font-bold text-[#284D31]">6 câu hỏi nhỏ, 4 tín hiệu lớn</h3>
             </div>
@@ -152,15 +151,11 @@ export function CreatorDnaIntro({
           <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#E5F5E4] text-[#3F7E49]">
             <HeartHandshake size={21} />
           </div>
-          <h3 className="mt-5 text-lg font-bold text-[#284D31]">Không bắt buộc, không bị chặn</h3>
+          <h3 className="mt-5 text-lg font-bold text-[#284D31]">Không bắt buộc</h3>
           <p className="mt-2 text-sm leading-6 text-[#71816E]">
-            Bạn có thể bỏ qua toàn bộ hoặc từng câu khuyến nghị. emsen sẽ tiếp tục tìm hiểu
+            Bạn có thể bỏ qua toàn bộ hoặc một số câu. emsen sẽ tiếp tục tìm hiểu
             bạn một cách tự nhiên trong quá trình cùng làm nội dung.
           </p>
-          <div className="mt-5 flex items-start gap-2.5 border-t border-[#DDEBD8] pt-4 text-xs leading-5 text-[#71816E]">
-            <ShieldCheck className="mt-0.5 shrink-0 text-[#67B86F]" size={16} />
-            Câu trả lời được lưu cho tài khoản của bạn. Chỉ backend mới gọi bộ đánh giá AI.
-          </div>
         </aside>
       </section>
     </div>

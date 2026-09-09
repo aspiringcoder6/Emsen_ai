@@ -1,4 +1,4 @@
-type AvatarActivity =
+export type AvatarActivity =
   | "checklist"
   | "idea"
   | "sitting"
@@ -7,7 +7,7 @@ type AvatarActivity =
   | "working"
   | "writing";
 
-type AvatarEmotion = "content" | "cute" | "happy" | "suprise" | "wonder";
+export type AvatarEmotion = "content" | "cute" | "happy" | "suprise" | "wonder";
 
 type EmsenAvatarProps = {
   activity?: AvatarActivity;

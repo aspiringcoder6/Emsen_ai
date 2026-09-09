@@ -1,4 +1,8 @@
-import type { DirectionBriefDto, DirectionContentDto } from "@creator-flow/contracts";
+import type {
+  DirectionBriefDto,
+  DirectionContentDto,
+  DirectionGoalSuggestionDto,
+} from "@creator-flow/contracts";
 import { HttpError } from "../../shared/http.js";
 
 function invalid(message: string): never {
@@ -56,6 +60,58 @@ export function parseContent(value: unknown): DirectionContentDto {
     pillars,
   };
 }
+
+export function parseGoalSuggestions(value: unknown): DirectionGoalSuggestionDto[] {
+  const body = object(value);
+  if (!Array.isArray(body.suggestions) || body.suggestions.length !== 3) {
+    invalid("AI cần trả về đúng 3 mục tiêu gợi ý.");
+  }
+
+  const suggestions = body.suggestions.map((item) => {
+    const suggestion = object(item);
+    return {
+      label: text(suggestion.label, "Tên mục tiêu", 60),
+      value: text(suggestion.value, "Nội dung mục tiêu", 500),
+    };
+  });
+
+  if (
+    new Set(suggestions.map(({ label }) => label.toLocaleLowerCase("vi-VN"))).size !==
+      suggestions.length ||
+    new Set(suggestions.map(({ value }) => value.toLocaleLowerCase("vi-VN"))).size !==
+      suggestions.length
+  ) {
+    invalid("Ba mục tiêu gợi ý cần khác nhau.");
+  }
+
+  return suggestions;
+}
+
+export const directionGoalSuggestionsResponseSchema = {
+  type: "object",
+  properties: {
+    suggestions: {
+      type: "array",
+      minItems: 3,
+      maxItems: 3,
+      items: {
+        type: "object",
+        properties: {
+          label: {
+            type: "string",
+            description: "Tên ngắn gọn từ 2 đến 6 từ cho lựa chọn mục tiêu.",
+          },
+          value: {
+            type: "string",
+            description: "Một câu mục tiêu rõ ràng, thực tế và có thể dùng trực tiếp.",
+          },
+        },
+        required: ["label", "value"],
+      },
+    },
+  },
+  required: ["suggestions"],
+};
 
 export const directionResponseSchema = {
   type: "object",

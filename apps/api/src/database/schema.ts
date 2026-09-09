@@ -12,7 +12,8 @@ export const directionSchemaSql = `
 export const initialSchemaSql = `
   CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE CHECK (email = lower(email)),
+    email TEXT UNIQUE CHECK (email IS NULL OR email = lower(email)),
+    phone_number TEXT,
     display_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     terms_accepted_at TIMESTAMPTZ NOT NULL,
@@ -180,6 +181,28 @@ export const legacyCamelCaseUserColumnsSql = `
     END IF;
   END;
   $migration$;
+`;
+
+export const phoneAuthSchemaSql = `
+  ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS phone_number TEXT;
+
+  DO $migration$
+  BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'users'
+        AND column_name = 'email'
+    ) THEN
+      ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+    END IF;
+  END;
+  $migration$;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS users_phone_number_unique_idx
+    ON users(phone_number)
+    WHERE phone_number IS NOT NULL;
 `;
 
 export const aiChatSchemaSql = `

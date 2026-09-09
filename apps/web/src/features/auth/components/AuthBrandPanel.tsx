@@ -3,8 +3,8 @@ import { EmsenAvatar } from "../../../components/branding/EmsenAvatar";
 import { EmsenMark } from "../../../components/branding/EmsenMark";
 
 const benefits = [
-  "Một workspace thống nhất từ ý tưởng đến video",
-  "Creator DNA được áp dụng xuyên suốt nội dung",
+  "Một không gian làm việc thống nhất từ ý tưởng đến video",
+  "Để chất riêng của bạn được áp dụng xuyên suốt nội dung",
   "Theo dõi tiến độ và lịch đăng trong cùng một không gian",
 ];
 

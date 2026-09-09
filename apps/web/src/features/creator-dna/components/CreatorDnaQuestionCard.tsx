@@ -1,4 +1,9 @@
-import { ArrowLeft, ArrowRight, Bot, Check, CircleHelp, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleHelp, Sparkles } from "lucide-react";
+import {
+  EmsenAvatar,
+  type AvatarActivity,
+  type AvatarEmotion,
+} from "../../../components/branding/EmsenAvatar";
 import type {
   CreatorDnaProfile,
   CreatorDnaQuestion,
@@ -18,6 +23,45 @@ type CreatorDnaQuestionCardProps = {
   question: CreatorDnaQuestion;
   totalSteps: number;
   value: AnswerValue;
+};
+
+type OnboardingGuide = {
+  avatar: { activity: AvatarActivity } | { emotion: AvatarEmotion };
+  completed: string;
+  prompt: string;
+};
+
+const onboardingGuides: Record<CreatorDnaQuestion["id"], OnboardingGuide> = {
+  displayName: {
+    avatar: { activity: "waving" },
+    prompt: "Chào bạn! Trước tiên, mình nên gọi bạn là gì để những lần trò chuyện sau tự nhiên hơn?",
+    completed: "Rất vui được làm quen với bạn! Mình đã ghi nhớ cách xưng hô này.",
+  },
+  niche: {
+    avatar: { activity: "idea" },
+    prompt: "Hãy chọn lĩnh vực gần nhất với nội dung bạn muốn làm. Chưa cần mô tả thật hoàn hảo đâu.",
+    completed: "Mình đã biết chủ đề chính rồi. Đây sẽ là gốc để các gợi ý sau sát với bạn hơn.",
+  },
+  platforms: {
+    avatar: { activity: "checklist" },
+    prompt: "Chọn tất cả nền tảng bạn muốn tập trung. Mình sẽ dựa vào đó để chọn format phù hợp.",
+    completed: "Đã ghi nhận nền tảng! Mình sẽ nhớ ưu tiên cách làm nội dung phù hợp với chúng.",
+  },
+  toneTraits: {
+    avatar: { emotion: "cute" },
+    prompt: "Bạn có thể chọn tối đa 3 phong cách gần với mình nhất, hoặc bỏ qua nếu vẫn đang khám phá.",
+    completed: "Mình bắt đầu hình dung được cách bạn muốn trò chuyện với khán giả rồi.",
+  },
+  audience: {
+    avatar: { emotion: "wonder" },
+    prompt: "Hãy nghĩ đến một người cụ thể mà bạn muốn giúp. Mô tả ngắn gọn như đang kể về họ cho mình nghe nhé.",
+    completed: "Mình đã hiểu hơn về người mà nội dung của bạn muốn đồng hành cùng.",
+  },
+  boundaries: {
+    avatar: { activity: "writing" },
+    prompt: "Cuối cùng, hãy nói điều bạn không muốn xuất hiện trong nội dung. Bạn cũng có thể bỏ qua nếu chưa có.",
+    completed: "Mình đã ghi lại ranh giới này và sẽ tôn trọng nó khi cùng bạn làm nội dung.",
+  },
 };
 
 function getCapturedSignals(profile: CreatorDnaProfile) {
@@ -48,6 +92,11 @@ export function CreatorDnaQuestionCard({
   const capturedSignals = getCapturedSignals(profile);
   const stringValue = typeof value === "string" ? value : "";
   const arrayValue = Array.isArray(value) ? value : [];
+  const hasCurrentAnswer = Array.isArray(value) ? value.length > 0 : value.trim().length > 0;
+  const guide = onboardingGuides[question.id];
+  const guideMessage = hasCurrentAnswer
+    ? `${guide.completed} Mình sẽ đợi bạn bấm “${currentStep === totalSteps - 1 ? "Hoàn tất" : "Tiếp tục"}” khi đã sẵn sàng.`
+    : guide.prompt;
 
   const toggleOption = (option: string) => {
     if (!Array.isArray(value)) {
@@ -245,22 +294,30 @@ export function CreatorDnaQuestionCard({
         </div>
 
         <aside className="border-t border-[#DDEBD6] bg-gradient-to-b from-[#F7FBF3] to-[#F8FBF5] p-5 sm:p-7 lg:border-l lg:border-t-0">
-          <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-[#46A82D] to-[#82C95B] text-white shadow-[0_8px_20px_rgba(70,168,45,0.2)]">
-              <Bot size={20} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-[#284D31]">emsen đang học</h3>
-                <span className="rounded-full bg-white px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[#46A82D]">
-                  Backend AI
-                </span>
-              </div>
-              <p className="mt-0.5 text-[11px] text-[#829782]">Đánh giá sau khi hoàn tất 6 câu</p>
-            </div>
+          <div className="relative mx-auto h-36 w-44">
+            <span className="absolute inset-x-5 bottom-1 h-10 rounded-full bg-[#CFE8C5]/55 blur-xl" />
+            <EmsenAvatar
+              {...guide.avatar}
+              alt={`Emsen hướng dẫn bước ${currentStep + 1}`}
+              className="relative h-full w-full drop-shadow-[0_12px_20px_rgba(70,118,61,0.15)]"
+              eager
+            />
           </div>
 
-          <div className="mt-6 rounded-2xl border border-white/80 bg-white/75 p-4 shadow-sm">
+          <div className="relative mt-3 rounded-2xl border border-[#D8E8D2] bg-white p-4 shadow-[0_9px_24px_rgba(40,77,49,0.07)]">
+            <span className="absolute -top-2 left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-l border-t border-[#D8E8D2] bg-white" />
+            <div className="relative flex items-center gap-2 text-xs font-bold text-[#3F7D3D]">
+              <Sparkles size={14} /> Emsen hướng dẫn
+            </div>
+            <p className="relative mt-2 text-sm leading-6 text-[#526952]">{guideMessage}</p>
+            {!hasCurrentAnswer && question.required ? (
+              <p className="relative mt-2 text-[11px] font-semibold text-[#A06D43]">
+                Mình sẽ ở đây chờ bạn hoàn thiện câu trả lời này.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-white/80 bg-white/75 p-4 shadow-sm">
             <div className="flex items-center gap-2 text-xs font-bold text-[#526952]">
               <Sparkles className="text-[#46A82D]" size={15} />
               Tín hiệu từ câu này
@@ -293,8 +350,7 @@ export function CreatorDnaQuestionCard({
 
           <div className="mt-6 flex items-start gap-2.5 border-t border-[#E7DDD7] pt-5 text-[11px] leading-5 text-[#829782]">
             <CircleHelp className="mt-0.5 shrink-0" size={15} />
-            Tiến độ được tự động lưu trên backend. Khi hoàn tất, Gemini sẽ đánh giá; nếu
-            chưa có API key, hệ thống dùng fallback an toàn.
+            Tiến độ được tự động lưu. Bạn có thể rời khỏi đây và quay lại tiếp tục bất cứ lúc nào.
           </div>
         </aside>
       </div>

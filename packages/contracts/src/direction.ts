@@ -14,6 +14,16 @@ export type DirectionContentDto = {
   pillars: ContentPillarDto[];
 };
 export type DirectionSection = keyof DirectionContentDto;
+export type DirectionGoalSuggestionDto = {
+  label: string;
+  value: string;
+};
+export type DirectionGoalSuggestionsDto = {
+  generatedAt: string;
+  model: string;
+  provider: "google-gemini";
+  suggestions: DirectionGoalSuggestionDto[];
+};
 export type DirectionVersionDto = {
   id: string;
   version: number;

@@ -22,6 +22,19 @@ type SidebarProps = {
   user: AuthUser;
 };
 
+function displayPhoneNumber(phoneNumber: string | null) {
+  if (!phoneNumber) {
+    return "Chưa cập nhật số điện thoại";
+  }
+
+  if (/^\+84\d{9}$/.test(phoneNumber)) {
+    const localNumber = `0${phoneNumber.slice(3)}`;
+    return `${localNumber.slice(0, 4)} ${localNumber.slice(4, 7)} ${localNumber.slice(7)}`;
+  }
+
+  return phoneNumber;
+}
+
 export function Sidebar({
   activeItem,
   collapsed,
@@ -179,7 +192,9 @@ export function Sidebar({
               <div className="absolute bottom-[calc(100%+10px)] left-0 z-20 w-[238px] rounded-2xl border border-[#D8E8D2] bg-white p-2 shadow-[0_18px_48px_rgba(40,77,49,0.16)]">
                 <div className="border-b border-[#E6F0E1] px-3 py-2.5">
                   <p className="truncate text-sm font-bold text-[#31583A]">{user.name}</p>
-                  <p className="mt-1 truncate text-[11px] text-[#829782]">{user.email}</p>
+                  <p className="mt-1 truncate text-[11px] text-[#829782]">
+                    {displayPhoneNumber(user.phoneNumber)}
+                  </p>
                 </div>
                 <button
                   className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#C64343] transition hover:bg-[#FFF2F2]"
@@ -210,7 +225,7 @@ export function Sidebar({
               </div>
               <div className={`min-w-0 flex-1 ${collapsed ? "lg:hidden" : ""}`}>
                 <p className="truncate text-sm font-bold text-[#31583A]">{user.name}</p>
-                <p className="truncate text-xs text-[#829782]">emsen workspace</p>
+                <p className="truncate text-xs text-[#829782]">Không gian làm việc Emsen</p>
               </div>
               <MoreHorizontal
                 className={`ml-auto shrink-0 text-[#829782] ${collapsed ? "lg:hidden" : ""}`}

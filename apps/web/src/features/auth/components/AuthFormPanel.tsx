@@ -3,7 +3,7 @@ import {
   Eye,
   EyeOff,
   LockKeyhole,
-  Mail,
+  Phone,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
@@ -18,10 +18,26 @@ type AuthFormPanelProps = {
   onAuthenticate: (request: AuthRequest) => Promise<void>;
 };
 
+function normalizePhoneNumber(value: string) {
+  const compact = value.trim().replace(/[\s().-]/g, "");
+
+  if (/^0\d{9}$/.test(compact)) {
+    return `+84${compact.slice(1)}`;
+  }
+  if (/^84\d{9}$/.test(compact)) {
+    return `+${compact}`;
+  }
+  if (/^\+[1-9]\d{7,14}$/.test(compact)) {
+    return compact;
+  }
+
+  return null;
+}
+
 export function AuthFormPanel({ onAuthenticate }: AuthFormPanelProps) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -47,9 +63,9 @@ export function AuthFormPanel({ onAuthenticate }: AuthFormPanelProps) {
   };
 
   const submitAuth = async () => {
-    const normalizedEmail = email.trim().toLocaleLowerCase("vi-VN");
-    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
-      setError("Vui lòng nhập một địa chỉ email hợp lệ.");
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+    if (!normalizedPhoneNumber) {
+      setError("Vui lòng nhập số điện thoại hợp lệ, ví dụ 0912 345 678.");
       return;
     }
 
@@ -85,8 +101,8 @@ export function AuthFormPanel({ onAuthenticate }: AuthFormPanelProps) {
     setError("");
     try {
       await onAuthenticate({
-        email: normalizedEmail,
         password,
+        phoneNumber: normalizedPhoneNumber,
         remember,
         source: "login",
       });
@@ -98,15 +114,22 @@ export function AuthFormPanel({ onAuthenticate }: AuthFormPanelProps) {
   };
 
   const completeSignup = async (creatorDna: "start" | "skip") => {
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+    if (!normalizedPhoneNumber) {
+      setPendingSignup(false);
+      setError("Vui lòng nhập số điện thoại hợp lệ, ví dụ 0912 345 678.");
+      return;
+    }
+
     setSubmitting(true);
     setError("");
     try {
       await onAuthenticate({
         acceptedTerms,
         creatorDna,
-        email: email.trim().toLocaleLowerCase("vi-VN"),
         name: name.trim(),
         password,
+        phoneNumber: normalizedPhoneNumber,
         source: "signup",
       });
     } catch (requestError) {
@@ -170,7 +193,7 @@ export function AuthFormPanel({ onAuthenticate }: AuthFormPanelProps) {
               {mode === "login" ? "Mừng bạn trở lại" : "Gieo một khởi đầu mới"}
             </p>
             <h2 className="mt-2 text-3xl font-bold tracking-[-0.04em] text-[#284D31]">
-              {mode === "login" ? "Đăng nhập workspace" : "Tạo tài khoản"}
+              {mode === "login" ? "Đăng nhập" : "Tạo tài khoản"}
             </h2>
             <p className="mt-2 text-sm leading-6 text-[#829782]">
               {mode === "login"
@@ -205,19 +228,20 @@ export function AuthFormPanel({ onAuthenticate }: AuthFormPanelProps) {
               ) : null}
 
               <label className="block">
-                <span className="text-xs font-bold text-[#526952]">Email</span>
+                <span className="text-xs font-bold text-[#526952]">Số điện thoại</span>
                 <div className="relative mt-2">
-                  <Mail
+                  <Phone
                     className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A794]"
                     size={18}
                   />
                   <input
-                    autoComplete="email"
+                    autoComplete="tel"
                     className="h-12 w-full rounded-2xl border border-[#D7E7D1] bg-[#FFFDF8] pl-11 pr-4 text-sm text-[#31583A] outline-none transition placeholder:text-[#9CAF98] focus:border-[#82C95B] focus:bg-white focus:ring-4 focus:ring-[#82C95B]/10"
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="you@company.com"
-                    type="email"
-                    value={email}
+                    inputMode="tel"
+                    onChange={(event) => setPhoneNumber(event.target.value)}
+                    placeholder="0912 345 678"
+                    type="tel"
+                    value={phoneNumber}
                   />
                 </div>
               </label>
@@ -337,10 +361,7 @@ export function AuthFormPanel({ onAuthenticate }: AuthFormPanelProps) {
           </div>
         )}
 
-        <div className="mt-5 flex items-center justify-center gap-2 text-center text-[10px] text-[#94A794]">
-          <ShieldCheck size={13} />
-          Tài khoản và Creator DNA được lưu an toàn trên backend.
-        </div>
+
       </div>
     </section>
   );

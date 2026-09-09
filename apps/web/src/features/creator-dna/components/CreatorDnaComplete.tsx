@@ -1,12 +1,12 @@
 import {
   ArrowRight,
-  Bot,
   Check,
   Dna,
   PencilLine,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import { EmsenAvatar } from "../../../components/branding/EmsenAvatar";
 import type {
   CreatorDnaInsight,
   CreatorDnaProfile,
@@ -40,20 +40,25 @@ export function CreatorDnaComplete({
     return (
       <section className="grid min-h-[560px] place-items-center overflow-hidden rounded-[30px] border border-[#DDEBD6] bg-white px-6 py-12 text-center shadow-[0_22px_60px_rgba(40,77,49,0.08)]">
         <div className="max-w-lg">
-          <div className="relative mx-auto grid h-24 w-24 place-items-center rounded-[30px] bg-[#EAF6E4] text-[#46A82D]">
-            <span className="absolute inset-0 animate-ping rounded-[30px] bg-[#82C95B]/15" />
-            <Dna className="relative animate-pulse" size={42} />
+          <div className="relative mx-auto h-40 w-48">
+            <span className="absolute inset-x-8 bottom-3 h-10 rounded-full bg-[#82C95B]/20 blur-xl" />
+            <EmsenAvatar
+              activity="working"
+              alt="Emsen đang tổng hợp Creator DNA"
+              className="relative h-full w-full drop-shadow-[0_14px_24px_rgba(70,118,61,0.16)]"
+              eager
+            />
           </div>
           <span className="mt-7 inline-flex items-center gap-2 rounded-full bg-[#EAF6E4] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#46A82D]">
-            <Bot size={13} />
-            Phân tích demo
+            <Sparkles size={13} />
+            Emsen đang tổng hợp
           </span>
           <h2 className="mt-4 text-2xl font-bold tracking-[-0.035em] text-[#284D31] sm:text-3xl">
             emsen đang ghép những tín hiệu đầu tiên…
           </h2>
           <p className="mt-3 text-sm leading-6 text-[#748A74]">
-            Mình đang gửi 6 câu trả lời tới bộ đánh giá trên backend. Nếu Gemini chưa được
-            cấu hình hoặc tạm thời gián đoạn, emsen sẽ dùng đánh giá fallback an toàn.
+            Bạn chờ mình một chút nhé. Mình đang ghép những câu trả lời vừa rồi thành điểm
+            khởi đầu để đồng hành cùng bạn sát hơn.
           </p>
         </div>
       </section>
@@ -100,21 +105,29 @@ export function CreatorDnaComplete({
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.13em] text-[#DDF3D3]">
-                  Điểm khởi đầu
-                </p>
-                <p className="mt-1 text-sm text-white/70">Sẽ đầy dần theo thời gian</p>
+          <div>
+            <EmsenAvatar
+              emotion="happy"
+              alt="Emsen vui vì đã hoàn tất Creator DNA"
+              className="mx-auto h-44 w-44 drop-shadow-[0_16px_28px_rgba(15,38,20,0.24)]"
+              eager
+            />
+            <div className="mt-2 rounded-[24px] border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.13em] text-[#DDF3D3]">
+                    Điểm khởi đầu
+                  </p>
+                  <p className="mt-1 text-sm text-white/70">Sẽ đầy dần theo thời gian</p>
+                </div>
+                <span className="text-3xl font-bold">{insight.readiness}%</span>
               </div>
-              <span className="text-3xl font-bold">{insight.readiness}%</span>
-            </div>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#67B86F] to-[#82C95B]"
-                style={{ width: `${insight.readiness}%` }}
-              />
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-[#67B86F] to-[#82C95B]"
+                  style={{ width: `${insight.readiness}%` }}
+                />
+              </div>
             </div>
           </div>
         </div>

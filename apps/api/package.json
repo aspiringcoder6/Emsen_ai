@@ -9,7 +9,9 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test:direction": "node --import tsx --test test/direction.test.ts",
+    "test:direction-goals": "node --import tsx --test test/directionGoalSuggestions.test.ts",
     "test:content-plan": "node --import tsx --test test/contentPlan.test.ts",
+    "test:phone-number": "node --import tsx --test test/phoneNumber.test.ts",
     "test:scripts": "node --import tsx --test test/script.test.ts"
   },
   "dependencies": {

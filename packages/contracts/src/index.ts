@@ -10,9 +10,9 @@ export type ServiceStatus = {
 
 export type AuthUserDto = {
   createdAt: string;
-  email: string;
   id: string;
   name: string;
+  phoneNumber: string | null;
 };
 
 export type CreatorDnaOnboardingStatus =
@@ -93,14 +93,14 @@ export type ApiErrorDto = {
 export type SignupRequestDto = {
   acceptedTerms: boolean;
   creatorDnaChoice: "start" | "skip";
-  email: string;
   name: string;
   password: string;
+  phoneNumber: string;
 };
 
 export type LoginRequestDto = {
-  email: string;
   password: string;
+  phoneNumber: string;
   remember: boolean;
 };
 

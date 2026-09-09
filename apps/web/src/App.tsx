@@ -82,16 +82,16 @@ export function App() {
       const session = await signup({
         acceptedTerms: request.acceptedTerms,
         creatorDnaChoice: request.creatorDna,
-        email: request.email,
         name: request.name,
         password: request.password,
+        phoneNumber: request.phoneNumber,
       });
       setActiveItem(request.creatorDna === "start" ? "creator-dna" : "overview");
       setAuthUser(session.user);
     } else {
       const session = await login({
-        email: request.email,
         password: request.password,
+        phoneNumber: request.phoneNumber,
         remember: request.remember,
       });
       setActiveItem("overview");
