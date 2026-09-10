@@ -13,5 +13,7 @@ export const createScript = (body: CreateScriptRequestDto) =>
   apiRequest<ScriptDocumentDto>("/scripts", { method: "POST", body });
 export const updateScript = (id: string, body: UpdateScriptRequestDto) =>
   apiRequest<ScriptDocumentDto>(`/scripts/${id}`, { method: "PUT", body });
+export const deleteScript = (id: string) =>
+  apiRequest<void>(`/scripts/${id}`, { method: "DELETE" });
 export const assistScript = (id: string, body: ScriptAssistRequestDto) =>
   apiRequest<ScriptAssistResponseDto>(`/scripts/${id}/assist`, { method: "POST", body });

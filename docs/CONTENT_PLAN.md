@@ -3,23 +3,27 @@
 ## Luồng MVP
 
 - Creator DNA → chốt Định hướng → mở Kế hoạch nội dung.
-- Chọn ngày bắt đầu và ưu tiên tuần. Gemini tạo 7 nội dung cho 7 ngày liên tiếp, mỗi ngày một bài.
+- Mỗi tài khoản có thể tạo nhiều kế hoạch có tên riêng; mỗi kế hoạch giữ timeline và lịch sử phiên bản độc lập.
+- Chọn tuần, những ngày có thể quay và mục tiêu 1–7 video. Cả lịch quay lẫn mục tiêu đều có chế độ để AI tự quyết định; một ngày rảnh có thể gom nhiều video để batch quay.
+- Gemini tạo 1–7 nội dung, tuân theo đúng ngày rảnh và số video nếu người dùng đã chọn.
 - Ma trận hiển thị trụ cột × mục đích (Giá trị, Kết nối, Chuyển đổi), tỷ lệ mục tiêu và số bài thực tế.
-- Chỉnh nền tảng, định dạng, góc khai thác, hook, CTA, ghi chú sản xuất; tạo lại riêng một ngày hoặc toàn bộ tuần.
-- Lưu nháp/chốt tạo phiên bản mới. Các phiên bản được phân theo ngày bắt đầu, lưu kèm bản định hướng đã chốt và snapshot DNA. Bản nháp định hướng mới không tự thay thế định hướng của kế hoạch cũ.
+- Chỉnh nền tảng, định dạng, góc khai thác, hook, CTA, ghi chú sản xuất; tạo lại riêng một ý tưởng hoặc toàn bộ tuần.
+- Lưu nháp/chốt tạo phiên bản mới trong đúng kế hoạch, kèm bản định hướng đã chốt và snapshot DNA. Bản nháp định hướng mới không tự thay thế định hướng của kế hoạch cũ.
+- Khi chốt phiên bản mới, kịch bản liên kết được đồng bộ. Trường còn giống dữ liệu nguồn sẽ cập nhật; phần người dùng đã tự viết được giữ nguyên và hiển thị trong thông báo đồng bộ.
 - Khi sang tab khác, bản chỉnh sửa được giữ. Khi quay lại từ Cài đặt, trạng thái kết nối AI được cập nhật mà không làm mất bản đang sửa.
-- Đây là kế hoạch biên tập; chưa tự đăng bài, chưa lấy trend hoặc xây pipeline kịch bản.
+- Đây là kế hoạch biên tập; chưa tự đăng bài hoặc lấy trend.
 
 ## API
 
-- `GET /api/content-plan?weekStart=YYYY-MM-DD`: phiên bản của kỳ 7 ngày, định hướng đã chốt gần nhất, trạng thái kết nối.
-- `POST /api/content-plan/generate`: `{ baseVersion, directionId, brief: { weekStart, focus }, dayIndex?, items? }`.
-- `POST /api/content-plan/versions`: `{ baseVersion, directionId, brief, items, status }`.
+- `GET /api/content-plan?planId=UUID`: danh sách kế hoạch và các phiên bản của kế hoạch đang chọn. `weekStart` vẫn được hỗ trợ cho màn hình tổng quan cũ.
+- `POST /api/content-plan/generate`: `{ planId, baseVersion, directionId, brief: { name, weekStart, focus, availableDays, weeklyVideoTarget }, itemId?, dayIndex?, items? }`. Gửi `planId: null` để tạo kế hoạch mới. `dayIndex` chỉ còn là đường tương thích cho client cũ.
+- `POST /api/content-plan/versions`: cùng phần nhận diện kế hoạch và brief ở trên, cộng `{ items, status }`.
+- `DELETE /api/scripts/:scriptId`: xóa đúng kịch bản thuộc tài khoản đang đăng nhập.
 - `GET /api/settings/ai-key`: chỉ trạng thái, nguồn personal/workspace/none, model và bốn ký tự cuối.
 - `PUT /api/settings/ai-key`: `{ apiKey }`; gửi một yêu cầu kiểm tra ngắn tới Gemini trước khi lưu. Không ghi đè key cũ nếu kiểm tra thất bại.
 - `DELETE /api/settings/ai-key`: gỡ key trong emsen. Không thu hồi key bên Google; quay về kết nối workspace nếu có.
 
-Mọi endpoint đều xác thực session và dùng user ID từ session. Các bản kế hoạch chỉ tham chiếu định hướng đã chốt thuộc cùng người dùng. `baseVersion` cũ trả 409; khóa theo user khi cấp phiên bản chống ghi đè đồng thời. Kết quả AI phải qua kiểm tra đủ 7 ngày không trùng, trụ cột hợp lệ và các trường bắt buộc trước khi lưu.
+Mọi endpoint đều xác thực session và dùng user ID từ session. Các bản kế hoạch chỉ tham chiếu định hướng đã chốt thuộc cùng người dùng. `baseVersion` cũ trả 409; khóa theo user khi cấp phiên bản chống ghi đè đồng thời. Kết quả AI phải qua kiểm tra số lượng, mã nội dung không trùng, ngày rảnh, mục tiêu video, trụ cột và các trường bắt buộc trước khi lưu.
 
 ## Bảo vệ key
 
@@ -43,6 +47,6 @@ Không cam kết mọi model luôn miễn phí. Người dùng cần kiểm tra 
 
 ## Kiểm thử
 
-`npm run test:content-plan --workspace @creator-flow/api` kiểm tra date/schema, đăng nhập, key mã hóa/cách ly/thay thế/gỡ, gọi đúng key, định hướng thuộc tài khoản, tạo lại riêng ngày, lỗi AI không mất dữ liệu, lưu/chốt/lịch sử và xung đột ghi.
+`npm run test:content-plan --workspace @creator-flow/api` kiểm tra date/schema, batch quay, mục tiêu video, đăng nhập, key mã hóa/cách ly/thay thế/gỡ, tạo lại riêng ý tưởng, lỗi AI không mất dữ liệu, nhiều kế hoạch độc lập, đồng bộ kịch bản và xung đột ghi.
 
 Test dùng PostgreSQL local, tạo user UUID tạm và dọn đúng các fixture này; Gemini được mô phỏng, không tiêu hạn mức Google. Chạy thêm `npm run test:direction --workspace @creator-flow/api` để kiểm tra hồi quy sau đổi cách chọn provider.

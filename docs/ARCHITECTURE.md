@@ -27,8 +27,11 @@ Web -> API -> PostgreSQL
   phiên bản theo tài khoản. Mỗi phiên bản lưu snapshot Creator DNA; AI dùng
   Gemini adapter hiện có, kiểm tra JSON và tỷ lệ trụ cột trước khi lưu.
   Xem [MASTER_DIRECTION.md](./MASTER_DIRECTION.md) cho luồng và API.
-- Content Plan đã có ma trận nội dung và kế hoạch 7 ngày từ định hướng đã chốt,
-  tạo lại từng ngày, chỉnh sửa và lịch sử phiên bản. Cài đặt hỗ trợ API key
+- Content Plan hỗ trợ nhiều kế hoạch/timeline độc lập, lịch quay theo ngày rảnh,
+  batch nhiều video trong một ngày, mục tiêu video tùy chọn, tạo lại từng ý tưởng,
+  chỉnh sửa và lịch sử phiên bản.
+  Kịch bản được nhóm theo kế hoạch; khi chốt kế hoạch mới, liên kết ổn định sẽ
+  đồng bộ các trường nguồn mà không ghi đè phần người dùng đã tự viết. Cài đặt hỗ trợ API key
   Google cá nhân, mã hóa ở backend và dùng chung cơ chế chọn provider cho mọi
   tính năng AI. Xem [CONTENT_PLAN.md](./CONTENT_PLAN.md).
 

@@ -120,10 +120,16 @@ function parseAdvancedSettings(value: unknown): ScriptAdvancedSettingsDto {
 export function parseCreateScript(value: unknown): CreateScriptRequestDto {
   const body = scriptObject(value);
   if (body.mode !== "manual" && body.mode !== "ai") return invalid("Cách tạo kịch bản không hợp lệ.");
-  const hasPlan = body.contentPlanVersionId !== undefined || body.dayIndex !== undefined;
-  if (hasPlan && (!Number.isInteger(body.dayIndex) || (body.dayIndex as number) < 0 || (body.dayIndex as number) > 6)) {
+  const hasPlanReference = body.contentPlanId !== undefined || body.contentPlanVersionId !== undefined;
+  const hasPlanItem = body.contentPlanItemId !== undefined || body.dayIndex !== undefined;
+  const hasPlan = hasPlanReference || hasPlanItem;
+  if (body.dayIndex !== undefined && (!Number.isInteger(body.dayIndex) || (body.dayIndex as number) < 0 || (body.dayIndex as number) > 6)) {
     return invalid("Ngày trong kế hoạch không hợp lệ.");
   }
+  if (hasPlan && !hasPlanReference) {
+    return invalid("Kế hoạch nội dung không hợp lệ.");
+  }
+  if (hasPlan && !hasPlanItem) return invalid("Hãy chọn một nội dung trong kế hoạch.");
   return {
     mode: body.mode,
     title: text(body.title, "Tên kịch bản", 250, !hasPlan),
@@ -131,12 +137,14 @@ export function parseCreateScript(value: unknown): CreateScriptRequestDto {
     scheduledFor: date(body.scheduledFor, "Ngày dự kiến"),
     platform: text(body.platform, "Nền tảng", 80),
     format: text(body.format, "Định dạng", 120),
-    ...(hasPlan
-      ? {
-          contentPlanVersionId: uuid(body.contentPlanVersionId, "Phiên bản kế hoạch"),
-          dayIndex: body.dayIndex as number,
-        }
-      : {}),
+    ...(hasPlan ? {
+      ...(body.contentPlanId !== undefined ? { contentPlanId: uuid(body.contentPlanId, "Kế hoạch nội dung") } : {}),
+      ...(body.contentPlanVersionId !== undefined ? { contentPlanVersionId: uuid(body.contentPlanVersionId, "Phiên bản kế hoạch") } : {}),
+      ...(body.contentPlanItemId !== undefined
+        ? { contentPlanItemId: text(body.contentPlanItemId, "Mã nội dung", 100, true) }
+        : {}),
+      ...(body.dayIndex !== undefined ? { dayIndex: body.dayIndex as number } : {}),
+    } : {}),
   };
 }
 

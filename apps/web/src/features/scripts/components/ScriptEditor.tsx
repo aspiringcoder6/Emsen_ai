@@ -15,6 +15,8 @@ import {
   Download,
   FileJson,
   Film,
+  FolderKanban,
+  Link2,
   LoaderCircle,
   Plus,
   Save,
@@ -25,7 +27,7 @@ import {
 } from "lucide-react";
 import { EmsenAvatar } from "../../../components/branding/EmsenAvatar";
 import { downloadScript, scriptAsText } from "../scriptExport";
-import { formatScriptDate, scriptStatusConfig, scriptStatuses } from "../scriptConfig";
+import { formatScriptDate, scriptStatusConfig, scriptStatuses, scriptSyncFieldLabels } from "../scriptConfig";
 
 const inputClass = "mt-2 w-full rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2.5 text-sm font-normal leading-6 text-[#31583A] outline-none transition focus:border-[#72B65D] focus:ring-2 focus:ring-[#DDEED6]";
 
@@ -167,6 +169,7 @@ export function ScriptEditor({
   onBack,
   onChange,
   onSave,
+  onDelete,
   onAssist,
   onSettings,
 }: {
@@ -180,6 +183,7 @@ export function ScriptEditor({
   onBack: () => void;
   onChange: (next: ScriptDocumentDto) => void;
   onSave: () => void;
+  onDelete: () => void;
   onAssist: (section: ScriptAssistSection, prompt: string) => void;
   onSettings: () => void;
 }) {
@@ -237,6 +241,9 @@ export function ScriptEditor({
   const completedSections = primarySections.filter((value) => value.trim()).length;
   const wordCount = primarySections.join(" ").trim().split(/\s+/).filter(Boolean).length;
   const storyboardDuration = draft.content.storyboard.reduce((total, frame) => total + frame.durationSeconds, 0);
+  const planSync = draft.planReference?.sync;
+  const appliedSyncLabels = planSync?.appliedFields.map((field) => scriptSyncFieldLabels[field]) ?? [];
+  const preservedSyncLabels = planSync?.preservedFields.map((field) => scriptSyncFieldLabels[field]) ?? [];
 
   return (
     <section className="mx-auto max-w-[1280px] space-y-4">
@@ -257,6 +264,7 @@ export function ScriptEditor({
             </div>
           </details>
 
+          <button type="button" onClick={onDelete} aria-label="Xóa kịch bản" className="rounded-xl border border-[#F0D5D0] bg-white p-2.5 text-[#A15B55] hover:bg-[#FFF0EC]"><Trash2 size={15} /></button>
           <select value={draft.status} aria-label="Trạng thái kịch bản" onChange={(event) => applyChange({ ...draft, status: event.target.value as ScriptDocumentDto["status"] })} style={{ color: status.color, background: status.surface }} className="rounded-xl border-0 px-3 py-2.5 text-xs font-bold">{scriptStatuses.map((value) => <option key={value} value={value}>{scriptStatusConfig[value].label}</option>)}</select>
           <button type="button" disabled={saving || !dirty || !draft.title.trim()} onClick={onSave} className="inline-flex items-center gap-2 rounded-xl bg-[#4E8052] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{saving ? <LoaderCircle size={16} className="animate-spin" /> : <Save size={16} />} <span className="hidden sm:inline">Lưu</span></button>
         </div>
@@ -264,6 +272,12 @@ export function ScriptEditor({
 
       {error && <p role="alert" className="rounded-xl border border-[#F1C9C2] bg-[#FFF0EC] p-3 text-sm text-[#9A4B42]">{error}</p>}
       {(notice || exportNotice) && <p role="status" className="rounded-xl border border-[#CFE2C7] bg-[#EFF8EB] p-3 text-sm text-[#417447]">{exportNotice || notice}</p>}
+      {draft.planReference && planSync && planSync.state !== "current" && (
+        <section className={`rounded-[18px] border p-4 text-sm ${planSync.state === "source-removed" ? "border-[#F0D6A8] bg-[#FFF7E8] text-[#7C6238]" : "border-[#CFE2C7] bg-[#F4FAF0] text-[#466D47]"}`}>
+          <p className="flex items-center gap-2 font-bold"><Link2 size={16} /> {planSync.state === "source-removed" ? "Nội dung nguồn không còn trong lịch" : `Đã đồng bộ từ ${draft.planReference.planName}`}</p>
+          {planSync.state === "source-removed" ? <p className="mt-1 text-xs leading-5">Kịch bản vẫn được giữ nguyên để bạn quyết định tiếp.</p> : <div className="mt-1 space-y-1 text-xs leading-5">{appliedSyncLabels.length > 0 && <p>Đã cập nhật: {appliedSyncLabels.join(", ")}.</p>}{preservedSyncLabels.length > 0 && <p>Đã giữ phần bạn tự sửa: {preservedSyncLabels.join(", ")}.</p>}{appliedSyncLabels.length === 0 && preservedSyncLabels.length === 0 && <p>Kế hoạch nguồn đã lên phiên bản {draft.planReference.contentPlanVersion}; kịch bản không cần đổi.</p>}</div>}
+        </section>
+      )}
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_310px]">
         <div className="space-y-3">
@@ -332,6 +346,7 @@ export function ScriptEditor({
         </div>
 
         <aside className="space-y-3 xl:sticky xl:top-24">
+          {draft.planReference && <section className="rounded-[20px] border border-[#D8E9D2] bg-[#F4FAF0] p-4"><p className="flex items-center gap-2 text-xs font-bold text-[#3F8240]"><FolderKanban size={15} /> {draft.planReference.planName}</p><p className="mt-1 line-clamp-2 text-[11px] leading-5 text-[#748A74]">Nội dung nguồn: {draft.planReference.planTitle}</p></section>}
           <details className="group rounded-[22px] border border-[#DDEBD6] bg-white">
             <summary className="flex cursor-pointer list-none items-center gap-3 p-4">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#EAF6E4] text-[#3F8240]"><Settings2 size={17} /></span>

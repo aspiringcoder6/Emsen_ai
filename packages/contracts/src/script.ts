@@ -37,11 +37,48 @@ export type ScriptAdvancedSettingsDto = {
   productionNotes: string;
 };
 
+export type ScriptPlanSourceSnapshotDto = {
+  title: string;
+  angle: string;
+  hook: string;
+  cta: string;
+  platform: string;
+  format: string;
+  objective: string;
+  productionNotes: string;
+  scheduledFor: string;
+};
+
+export type ScriptPlanSyncField =
+  | "title"
+  | "hook"
+  | "body"
+  | "cta"
+  | "storyboard"
+  | "schedule"
+  | "platform"
+  | "format"
+  | "objective"
+  | "productionNotes";
+
+export type ScriptPlanSyncDto = {
+  state: "current" | "updated" | "source-removed";
+  syncedAt: string;
+  appliedFields: ScriptPlanSyncField[];
+  preservedFields: ScriptPlanSyncField[];
+};
+
 export type ScriptPlanReferenceDto = {
+  contentPlanId: string;
   contentPlanVersionId: string;
+  contentPlanVersion: number;
+  contentPlanItemId: string;
   dayIndex: number;
   weekStart: string;
+  planName: string;
   planTitle: string;
+  sourceSnapshot: ScriptPlanSourceSnapshotDto;
+  sync: ScriptPlanSyncDto;
 };
 
 export type ScriptDocumentDto = {
@@ -61,7 +98,11 @@ export type ScriptDocumentDto = {
 
 export type ScriptScheduleOptionDto = {
   id: string;
+  contentPlanId: string;
+  contentPlanName: string;
   contentPlanVersionId: string;
+  contentPlanVersion: number;
+  contentPlanItemId: string;
   dayIndex: number;
   scheduledFor: string;
   title: string;
@@ -88,6 +129,9 @@ export type CreateScriptRequestDto = {
   scheduledFor: string | null;
   platform: string;
   format: string;
+  contentPlanId?: string;
+  contentPlanItemId?: string;
+  /** @deprecated Kept for requests created before plans received a stable id. */
   contentPlanVersionId?: string;
   dayIndex?: number;
 };

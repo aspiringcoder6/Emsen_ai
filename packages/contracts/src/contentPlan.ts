@@ -9,6 +9,7 @@ export type AiKeySettingsDto = {
 };
 export type ContentObjective = "Giá trị" | "Kết nối" | "Chuyển đổi";
 export type ContentPlanItemDto = {
+  id: string;
   dayIndex: number;
   pillarIndex: number;
   objective: ContentObjective;
@@ -20,9 +21,16 @@ export type ContentPlanItemDto = {
   cta: string;
   productionNotes: string;
 };
-export type ContentPlanBriefDto = { weekStart: string; focus: string };
+export type ContentPlanBriefDto = {
+  name: string;
+  weekStart: string;
+  focus: string;
+  availableDays: number[] | null;
+  weeklyVideoTarget: number | null;
+};
 export type ContentPlanVersionDto = {
   id: string;
+  planId: string;
   version: number;
   status: "draft" | "approved";
   source: "ai" | "manual";
@@ -33,12 +41,23 @@ export type ContentPlanVersionDto = {
   dnaSnapshot: CreatorDnaStateDto;
   items: ContentPlanItemDto[];
 };
+export type ContentPlanSummaryDto = {
+  id: string;
+  name: string;
+  weekStart: string;
+  latestVersion: number;
+  latestStatus: "draft" | "approved" | null;
+  updatedAt: string;
+};
 export type ContentPlanStateDto = {
+  plans: ContentPlanSummaryDto[];
+  activePlanId: string | null;
   versions: ContentPlanVersionDto[];
   latestApprovedDirection: DirectionVersionDto | null;
   aiConfigured: boolean;
 };
 export type SaveContentPlanRequestDto = {
+  planId?: string | null;
   baseVersion: number;
   brief: ContentPlanBriefDto;
   directionId: string;
@@ -46,6 +65,7 @@ export type SaveContentPlanRequestDto = {
   status: "draft" | "approved";
 };
 export type GenerateContentPlanRequestDto = Omit<SaveContentPlanRequestDto, "items" | "status"> & {
+  itemId?: string;
   dayIndex?: number;
   items?: ContentPlanItemDto[];
 };

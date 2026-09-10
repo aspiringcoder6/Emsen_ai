@@ -47,7 +47,7 @@ export const navigationGroups: Array<{
       {
         id: "content-plan",
         label: "Kế hoạch nội dung",
-        description: "Ma trận và lịch nội dung 7 ngày",
+        description: "Lịch nội dung theo nhịp của bạn",
         icon: FileText,
       },
       {

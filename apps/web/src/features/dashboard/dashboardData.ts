@@ -110,7 +110,7 @@ export function getProductProgress(snapshot: DashboardSnapshot): ProductProgress
     {
       id: "content-plan",
       label: "Kế hoạch tuần",
-      caption: approvedPlan ? "Đã chốt 7 nội dung" : snapshot.plan.versions.length ? "Có bản nháp" : "Chưa lên kế hoạch",
+      caption: approvedPlan ? `Đã chốt ${approvedPlan.items.length} nội dung` : snapshot.plan.versions.length ? "Có bản nháp" : "Chưa lên kế hoạch",
       icon: FileText,
       state: approvedPlan ? "done" : approvedDirection ? "active" : "waiting",
     },
@@ -136,7 +136,7 @@ export function getWeekEvents(snapshot: DashboardSnapshot, days: WeekDay[]): Wee
   const indexByDate = new Map(days.map((day) => [dateKey(day.date), day.index]));
   const approvedPlan = snapshot.plan.versions.find((version) => version.status === "approved");
   const planEvents: WeekEvent[] = approvedPlan ? approvedPlan.items.map((item) => ({
-    id: `plan-${approvedPlan.id}-${item.dayIndex}`,
+    id: `plan-${approvedPlan.id}-${item.id}`,
     dayIndex: item.dayIndex,
     time: "Cả ngày",
     kind: "plan",

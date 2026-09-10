@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../auth/session.js";
 import { HttpError } from "../../shared/http.js";
 import { parseCreateScript, parseScriptAssist, parseUpdateScript } from "./script.schema.js";
-import { assistScript, createScript, getScript, getScriptWorkspace, updateScript } from "./script.service.js";
+import { assistScript, createScript, deleteScript, getScript, getScriptWorkspace, updateScript } from "./script.service.js";
 
 export const scriptRouter = Router();
 scriptRouter.use(requireAuth);
@@ -34,6 +34,11 @@ scriptRouter.put("/:scriptId", async (request, response) => {
       parseUpdateScript(request.body),
     ),
   );
+});
+
+scriptRouter.delete("/:scriptId", async (request, response) => {
+  await deleteScript(request.auth!.userId, scriptId(request.params.scriptId));
+  response.status(204).end();
 });
 
 scriptRouter.post("/:scriptId/assist", async (request, response) => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CreateScriptRequestDto, ScriptScheduleOptionDto } from "@creator-flow/contracts";
 import { CalendarDays, FilePlus2, LoaderCircle, Sparkles, X } from "lucide-react";
 import { EmsenAvatar } from "../../../components/branding/EmsenAvatar";
@@ -21,8 +21,16 @@ export function CreateScriptPanel({
   onCreate: (input: CreateScriptRequestDto) => void;
   onSettings: () => void;
 }) {
+  const initialOption = scheduleOptions.find((item) => !item.alreadyLinked) ?? scheduleOptions[0];
   const [source, setSource] = useState<"schedule" | "new">(scheduleOptions.length ? "schedule" : "new");
-  const [selectedId, setSelectedId] = useState(scheduleOptions.find((item) => !item.alreadyLinked)?.id ?? scheduleOptions[0]?.id ?? "");
+  const [selectedPlanId, setSelectedPlanId] = useState(initialOption?.contentPlanId ?? "");
+  const [selectedId, setSelectedId] = useState(initialOption?.id ?? "");
+  const plans = useMemo(() => Array.from(new Map(scheduleOptions.map((item) => [item.contentPlanId, {
+    id: item.contentPlanId,
+    name: item.contentPlanName,
+    weekStart: item.weekStart,
+  }])).values()), [scheduleOptions]);
+  const planScheduleOptions = useMemo(() => scheduleOptions.filter((item) => item.contentPlanId === selectedPlanId), [scheduleOptions, selectedPlanId]);
   const selected = useMemo(() => scheduleOptions.find((item) => item.id === selectedId), [scheduleOptions, selectedId]);
   const [title, setTitle] = useState("");
   const [scheduledFor, setScheduledFor] = useState("");
@@ -30,6 +38,12 @@ export function CreateScriptPanel({
   const [format, setFormat] = useState("Video ngắn");
   const [brief, setBrief] = useState("");
   const [useAi, setUseAi] = useState(false);
+
+  useEffect(() => {
+    if (selected?.contentPlanId === selectedPlanId) return;
+    const next = planScheduleOptions.find((item) => !item.alreadyLinked) ?? planScheduleOptions[0];
+    setSelectedId(next?.id ?? "");
+  }, [planScheduleOptions, selected, selectedPlanId]);
 
   const submit = () => {
     if (source === "schedule" && selected) {
@@ -40,7 +54,8 @@ export function CreateScriptPanel({
         scheduledFor: selected.scheduledFor,
         platform: selected.platform,
         format: selected.format,
-        contentPlanVersionId: selected.contentPlanVersionId,
+        contentPlanId: selected.contentPlanId,
+        contentPlanItemId: selected.contentPlanItemId,
         dayIndex: selected.dayIndex,
       });
       return;
@@ -55,7 +70,7 @@ export function CreateScriptPanel({
     });
   };
 
-  const valid = source === "schedule" ? Boolean(selected) : title.trim().length >= 1;
+  const valid = source === "schedule" ? Boolean(selected && !selected.alreadyLinked) : title.trim().length >= 1;
   return (
     <section className="rounded-[26px] border border-[#CFE1C8] bg-gradient-to-br from-[#F5FAF1] via-white to-[#FFF0EC] p-5 shadow-[0_18px_55px_rgba(67,104,67,0.12)] sm:p-6">
       <div className="flex items-center justify-between gap-4">
@@ -78,12 +93,20 @@ export function CreateScriptPanel({
       </div>
 
       {source === "schedule" ? (
-        <label className="mt-5 block text-xs font-bold">Chọn nội dung đã lên lịch
-          <select className={inputClass} value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
-            {scheduleOptions.map((option) => <option key={option.id} value={option.id}>{formatScriptDate(option.scheduledFor)} · {option.title}{option.alreadyLinked ? " · Đã có kịch bản" : ""}</option>)}
-          </select>
-          {selected && <span className="mt-2 block text-xs font-normal leading-5 text-[#748A74]">{selected.platform} · {selected.format} · {selected.objective}</span>}
-        </label>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <label className="block text-xs font-bold">Kế hoạch nội dung
+            <select className={inputClass} value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)}>
+              {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-bold">Chọn nội dung đã lên lịch
+            <select className={inputClass} value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
+              {planScheduleOptions.map((option) => <option key={option.id} value={option.id} disabled={option.alreadyLinked}>{formatScriptDate(option.scheduledFor)} · {option.title}{option.alreadyLinked ? " · Đã có kịch bản" : ""}</option>)}
+            </select>
+          </label>
+          {selected && <div className="rounded-xl border border-[#E2EBDD] bg-white px-3 py-2.5 text-xs leading-5 text-[#748A74] sm:col-span-2"><strong className="text-[#31583A]">{selected.contentPlanName}</strong><span className="mx-1.5">·</span>{selected.platform} · {selected.format} · {selected.objective}</div>}
+          {selected?.alreadyLinked && <p className="text-xs text-[#9A6B45] sm:col-span-2">Nội dung này đã có kịch bản. Hãy chọn nội dung khác.</p>}
+        </div>
       ) : (
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="text-xs font-bold sm:col-span-2">Tên kịch bản<input className={inputClass} maxLength={250} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ví dụ: Vì sao video đầu tiên không cần hoàn hảo?" /></label>

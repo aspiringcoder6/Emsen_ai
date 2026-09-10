@@ -35,6 +35,7 @@ export function scriptAsText(script: ScriptDocumentDto) {
     : "(Chưa có cảnh)";
 
   const optionalDetails = [
+    script.planReference?.planName ? `Kế hoạch nội dung: ${script.planReference.planName}` : "",
     script.settings.objective.trim() ? `Mục tiêu: ${script.settings.objective.trim()}` : "",
     script.settings.audience.trim() ? `Khán giả: ${script.settings.audience.trim()}` : "",
     script.settings.tone.trim() ? `Giọng điệu: ${script.settings.tone.trim()}` : "",

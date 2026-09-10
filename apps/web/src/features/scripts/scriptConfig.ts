@@ -1,4 +1,4 @@
-import type { ScriptDocumentDto, ScriptStatus } from "@creator-flow/contracts";
+import type { ScriptDocumentDto, ScriptPlanSyncField, ScriptStatus } from "@creator-flow/contracts";
 
 export const scriptStatusConfig: Record<
   ScriptStatus,
@@ -12,6 +12,19 @@ export const scriptStatusConfig: Record<
 };
 
 export const scriptStatuses = Object.keys(scriptStatusConfig) as ScriptStatus[];
+
+export const scriptSyncFieldLabels: Record<ScriptPlanSyncField, string> = {
+  title: "tên kịch bản",
+  hook: "hook",
+  body: "nội dung",
+  cta: "CTA",
+  storyboard: "storyboard",
+  schedule: "ngày quay",
+  platform: "nền tảng",
+  format: "định dạng",
+  objective: "mục tiêu",
+  productionNotes: "ghi chú sản xuất",
+};
 
 export function scriptProgress(script: ScriptDocumentDto) {
   const sections = [script.content.hook, script.content.body, script.content.cta];

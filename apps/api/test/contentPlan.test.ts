@@ -2,18 +2,33 @@ import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { GeminiAiProvider } from "@creator-flow/ai-provider";
-import type { AiKeySettingsDto, ContentPlanItemDto, ContentPlanStateDto, ContentPlanVersionDto, DirectionVersionDto } from "@creator-flow/contracts";
-import { parsePlanItems, parseWeekStart } from "../src/modules/content-plan/contentPlan.schema.js";
+import type { AiKeySettingsDto, ContentPlanItemDto, ContentPlanStateDto, ContentPlanVersionDto, DirectionVersionDto, ScriptDocumentDto, ScriptWorkspaceDto } from "@creator-flow/contracts";
+import { parsePlanBrief, parsePlanItems, parseWeekStart, validatePlanSchedule } from "../src/modules/content-plan/contentPlan.schema.js";
 
 const items: ContentPlanItemDto[] = Array.from({ length: 7 }, (_, dayIndex) => ({
-  dayIndex, pillarIndex: dayIndex % 3, objective: "Giá trị", platform: "TikTok", format: "Video ngắn",
+  id: `item-${dayIndex}`, dayIndex, pillarIndex: dayIndex % 3, objective: "Giá trị", platform: "TikTok", format: "Video ngắn",
   title: `Ý tưởng ${dayIndex + 1}`, angle: "Chia sẻ trải nghiệm nấu ăn tại nhà", hook: "Một bữa tối trong 15 phút?", cta: "Lưu lại để thử nhé", productionNotes: "Quay bằng điện thoại",
 }));
-test("validates real dates, seven distinct days and direction-bound pillars", () => {
+test("validates real dates, flexible weekly volume and shooting constraints", () => {
   assert.equal(parseWeekStart("2028-02-29"), "2028-02-29");
   for (const value of ["2026-02-29", "2026-13-01", "today", "2026-09-05T00:00:00Z"]) assert.throws(() => parseWeekStart(value));
   assert.deepEqual(parsePlanItems(items, 3), items);
-  for (const value of [items.slice(0, 6), items.map((item) => ({ ...item, dayIndex: 0 })), items.map((item) => ({ ...item, pillarIndex: 3 })), items.map((item) => ({ ...item, title: "" }))]) assert.throws(() => parsePlanItems(value, 3));
+  assert.equal(parsePlanItems(items.slice(0, 3), 3).length, 3);
+  assert.equal(parsePlanItems([{ ...items[0]!, title: "" }], 3, undefined, true)[0]!.title, "");
+  for (const value of [[], items.map((item) => ({ ...item, id: "duplicate" })), items.map((item) => ({ ...item, pillarIndex: 3 })), items.map((item) => ({ ...item, title: "" }))]) assert.throws(() => parsePlanItems(value, 3));
+  const brief = parsePlanBrief({
+    name: "Kế hoạch nội dung 01",
+    weekStart: "2026-09-07",
+    focus: "Quay gọn trong tuần",
+    availableDays: [0, 1, 2],
+    weeklyVideoTarget: 3,
+  });
+  assert.deepEqual(validatePlanSchedule(items.slice(0, 3), brief), items.slice(0, 3));
+  assert.throws(() => validatePlanSchedule(items.slice(0, 2), brief));
+  assert.equal(parsePlanBrief({ ...brief, weeklyVideoTarget: 4 }).weeklyVideoTarget, 4);
+  const batchBrief = parsePlanBrief({ ...brief, availableDays: [5], weeklyVideoTarget: 3 });
+  const batchItems = items.slice(0, 3).map((item) => ({ ...item, dayIndex: 5 }));
+  assert.deepEqual(validatePlanSchedule(parsePlanItems(batchItems, 3), batchBrief), batchItems);
 });
 
 test("content planning and per-user API keys integration", async (t) => {
@@ -99,7 +114,7 @@ test("content planning and per-user API keys integration", async (t) => {
     });
     await t.test("regenerates one day and preserves unsaved edits on other days", async () => {
       const current = items.map((item) => ({ ...item, title: "Bản tôi vừa chỉnh" }));
-      const response = await request("/content-plan/generate", "POST", { ...generation, baseVersion: 1, dayIndex: 2, items: current });
+      const response = await request("/content-plan/generate", "POST", { ...generation, baseVersion: 1, itemId: items[2]!.id, items: current });
       assert.equal(response.status, 201); const version = await response.json() as ContentPlanVersionDto;
       assert.equal(version.items[2]!.title, items[2]!.title); assert.equal(version.items[1]!.title, "Bản tôi vừa chỉnh");
     });
@@ -117,6 +132,66 @@ test("content planning and per-user API keys integration", async (t) => {
       assert.equal(state.versions[0]!.status, "approved"); assert.equal(state.versions.length, 3);
       assert.equal((await (await request("/content-plan?weekStart=2026-09-14")).json() as ContentPlanStateDto).versions.length, 0);
       assert.equal((await (await request("/content-plan?weekStart=2026-09-07", "GET", undefined, cookies[1])).json() as ContentPlanStateDto).versions.length, 0);
+    });
+    await t.test("linked scripts follow a newly approved plan without losing custom edits", async () => {
+      const state = await (await request("/content-plan?weekStart=2026-09-07")).json() as ContentPlanStateDto;
+      const planId = state.activePlanId!;
+      const createdResponse = await request("/scripts", "POST", {
+        mode: "manual", title: items[0]!.title, brief: "", scheduledFor: "2026-09-07",
+        platform: items[0]!.platform, format: items[0]!.format, contentPlanId: planId,
+        contentPlanItemId: state.versions[0]!.items[0]!.id,
+        dayIndex: 0,
+      });
+      assert.equal(createdResponse.status, 201);
+      const created = await createdResponse.json() as ScriptDocumentDto;
+      const editedResponse = await request(`/scripts/${created.id}`, "PUT", {
+        revision: created.revision,
+        title: created.title,
+        status: created.status,
+        content: { ...created.content, body: "Phần nội dung tôi đã tự viết" },
+        settings: created.settings,
+        advancedSettings: created.advancedSettings,
+      });
+      assert.equal(editedResponse.status, 200);
+      const changedItems = items.map((item, index) => index === 0 ? {
+        ...item,
+        title: "Ý tưởng đã đổi",
+        angle: "Góc triển khai mới",
+        hook: "Hook mới từ kế hoạch",
+      } : item);
+      const approved = await request("/content-plan/versions", "POST", {
+        planId,
+        baseVersion: 3,
+        brief: { weekStart: "2026-09-07", focus: "Công thức nhanh" },
+        directionId: direction.id,
+        items: changedItems,
+        status: "approved",
+      });
+      assert.equal(approved.status, 201);
+      const scripts = await (await request("/scripts")).json() as ScriptWorkspaceDto;
+      const synced = scripts.scripts.find((script) => script.id === created.id)!;
+      assert.equal(synced.title, "Ý tưởng đã đổi");
+      assert.equal(synced.content.hook, "Hook mới từ kế hoạch");
+      assert.equal(synced.content.body, "Phần nội dung tôi đã tự viết");
+      assert.equal(synced.planReference?.contentPlanVersion, 4);
+      assert.ok(synced.planReference?.sync.preservedFields.includes("body"));
+    });
+    await t.test("keeps multiple named plans and timelines separate", async () => {
+      const response = await request("/content-plan/versions", "POST", {
+        planId: null,
+        baseVersion: 0,
+        brief: { name: "Kế hoạch nội dung 02", weekStart: "2026-09-07", focus: "Một series khác", availableDays: [1, 3, 5], weeklyVideoTarget: 3 },
+        directionId: direction.id,
+        items: [items[1], items[3], items[5]],
+        status: "approved",
+      });
+      assert.equal(response.status, 201);
+      const second = await response.json() as ContentPlanVersionDto;
+      const state = await (await request(`/content-plan?planId=${second.planId}`)).json() as ContentPlanStateDto;
+      assert.equal(state.plans.length, 2);
+      assert.equal(state.activePlanId, second.planId);
+      assert.equal(state.versions[0]!.brief.name, "Kế hoạch nội dung 02");
+      assert.deepEqual(state.versions[0]!.items.map((item) => item.dayIndex), [1, 3, 5]);
     });
     await t.test("removal affects only personal key and restores shared connection", async () => {
       const response = await request("/settings/ai-key", "DELETE"); assert.equal(response.status, 200);
