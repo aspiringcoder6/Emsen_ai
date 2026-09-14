@@ -62,10 +62,12 @@ Phương án này tận dụng tối đa phần đã có và tránh xây riêng 
 - Đã tạo skill registry dùng chung với metadata về input/output schema, quyền đọc/ghi và chính sách xác nhận.
 - Đã chuyển việc chọn câu hỏi chủ động và ghi tín hiệu chat vào Creator DNA thành hai skill độc lập.
 - Đã thêm ba skill Định hướng: đọc phiên bản hiện tại, tạo bản nháp và cập nhật toàn bộ hoặc từng phần bằng bản nháp mới.
-- Chat đã có structured skill call và lớp nhận diện tiếng Việt dự phòng; câu hỏi giả định không được phép kích hoạt skill ghi.
-- Mỗi lần chạy skill được lưu cùng tin nhắn chat; giao diện hiển thị kết quả thao tác Định hướng và tự làm mới trang Định hướng khi an toàn.
-- Đã thêm migration 12, unit test cho intent/registry và integration test cho luồng Creator DNA → chat → Định hướng.
-- Chưa triển khai confirmation token, idempotency tổng quát, context builder cho Plan/Script và audit table độc lập; đây là phần tiếp theo của Milestone A.
+- Đã thêm ba skill Kế hoạch nội dung: đọc đúng kế hoạch, tạo kế hoạch nháp riêng và điều chỉnh kế hoạch được chọn theo lịch rảnh, mục tiêu video, tuần và trọng tâm.
+- Chat đã có structured skill call và lớp nhận diện tiếng Việt dự phòng; câu hỏi giả định, yêu cầu xóa hoặc chốt không được phép kích hoạt skill ghi.
+- Mỗi lần chạy skill được lưu cùng tin nhắn chat; giao diện hiển thị kết quả thao tác và tự làm mới đúng Định hướng/Kế hoạch khi an toàn.
+- Tab Kế hoạch nội dung tự kiểm tra Định hướng mới nhất khi được mở. Nếu Định hướng thay đổi, hệ thống tạo phiên bản kế hoạch nháp phù hợp; không còn yêu cầu người dùng bấm “Tải bản mới nhất”.
+- Đã thêm migration 12, unit test cho intent/registry và integration test cho luồng Creator DNA → chat → Định hướng → Kế hoạch nội dung.
+- Chưa triển khai confirmation token, idempotency tổng quát, skill Kịch bản và audit table độc lập; đây là phần tiếp theo của Milestone A.
 
 ### Kết luận về khả năng thực hiện
 
@@ -183,11 +185,12 @@ Agent Orchestrator
 
 | Nhóm | Skill MVP | Tác dụng | Mức xác nhận |
 |---|---|---|---|
-| Context | `creator.get_profile` | Đọc Creator DNA và phần còn thiếu | Không |
-| Context | `direction.get_current` | Đọc định hướng đã chốt | Không |
-| Content Plan | `content_plan.list` / `content_plan.get` | Chọn đúng kế hoạch và timeline | Không |
-| Content Plan | `content_plan.generate_preview` | Sinh đề xuất chưa ghi dữ liệu | Không |
-| Content Plan | `content_plan.save_draft` | Lưu bản nháp | Xác nhận gộp nếu nhiều thay đổi |
+| Context | `creator_dna.ask_proactive_question` / `creator_dna.capture_chat_signals` | Hỏi chủ động và lưu tín hiệu Creator DNA có kiểm soát | Theo ngữ cảnh câu trả lời |
+| Direction | `direction.get_current` | Đọc định hướng hiện tại | Không |
+| Direction | `direction.generate_draft` / `direction.update_draft` | Tạo hoặc chỉnh Định hướng dưới dạng nháp | Xem lại bản nháp |
+| Content Plan | `content_plan.get_current` | Chọn và đọc đúng kế hoạch/timeline | Không |
+| Content Plan | `content_plan.generate_draft` | Tạo kế hoạch mới dưới dạng nháp | Xem lại bản nháp |
+| Content Plan | `content_plan.update_draft` | Điều chỉnh đúng kế hoạch và giữ trường không được yêu cầu đổi | Xem lại bản nháp |
 | Content Plan | `content_plan.approve` | Chốt và kích hoạt đồng bộ kịch bản | Bắt buộc |
 | Script | `script.list` / `script.get` | Tìm đúng kịch bản | Không |
 | Script | `script.create_preview` | Chuẩn bị kịch bản từ lịch/ghi chú | Không |

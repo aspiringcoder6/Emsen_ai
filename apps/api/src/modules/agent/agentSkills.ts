@@ -8,6 +8,11 @@ import {
   getCurrentDirectionSkill,
   updateDirectionDraftSkill,
 } from "./direction.skills.js";
+import {
+  generateContentPlanDraftSkill,
+  getCurrentContentPlanSkill,
+  updateContentPlanDraftSkill,
+} from "./contentPlan.skills.js";
 
 export const agentSkillRegistry = new AgentSkillRegistry();
 
@@ -16,6 +21,9 @@ agentSkillRegistry.register(captureChatSignalsSkill);
 agentSkillRegistry.register(getCurrentDirectionSkill);
 agentSkillRegistry.register(generateDirectionDraftSkill);
 agentSkillRegistry.register(updateDirectionDraftSkill);
+agentSkillRegistry.register(getCurrentContentPlanSkill);
+agentSkillRegistry.register(generateContentPlanDraftSkill);
+agentSkillRegistry.register(updateContentPlanDraftSkill);
 
 export function getAgentSkillCatalog() {
   return agentSkillRegistry.catalog();

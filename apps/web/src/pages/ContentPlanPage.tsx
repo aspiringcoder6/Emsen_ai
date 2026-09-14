@@ -77,7 +77,7 @@ export function ContentPlanPage({
             <label className="text-xs font-bold">Tên kế hoạch<input value={planName} maxLength={120} disabled={locked} onChange={(event) => plan.editPlanName(event.target.value)} className="mt-2 w-full rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2.5 text-sm font-normal" /></label>
             <label className="text-xs font-bold">Tuần bắt đầu<input type="date" min="2000-01-01" max="2099-12-25" value={weekStart} disabled={locked} onChange={(event) => plan.changeWeek(event.target.value)} className="mt-2 block rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2.5 font-normal" /></label>
           </div>
-          <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[#748A74]"><span>{planDate(weekStart, 0)} → {planDate(weekStart, 6)}</span><button type="button" onClick={plan.reload} disabled={locked} className="rounded-lg px-2 py-1.5 font-bold text-[#3F8240]">Tải bản mới nhất</button></div>
+          <p className="mt-3 text-xs text-[#748A74]">{planDate(weekStart, 0)} → {planDate(weekStart, 6)} · Tự đồng bộ khi bạn mở tab</p>
         </section>
       )}
 
@@ -87,8 +87,8 @@ export function ContentPlanPage({
 
       {state && !direction && (
         <div className="rounded-[24px] border border-[#DDE8D6] bg-[#F5F9F1] p-8 text-center">
-          <h3 className="text-xl font-bold">Bạn cần chốt định hướng trước.</h3>
-          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#75856E]">Emsen sẽ dùng định hướng để chọn chủ đề, khán giả và giọng điệu phù hợp.</p>
+          <h3 className="text-xl font-bold">Bạn cần tạo định hướng trước.</h3>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#75856E]">Emsen có thể dùng cả bản nháp để chuẩn bị kế hoạch; bạn chỉ cần chốt Định hướng trước khi chốt Kế hoạch.</p>
           <button type="button" onClick={onDirection} className="mt-5 rounded-xl bg-[#527F56] px-5 py-3 text-sm font-bold text-white">Mở Định hướng</button>
         </div>
       )}
@@ -108,8 +108,8 @@ export function ContentPlanPage({
             <h3 className="text-lg font-bold">Tuần này tập trung điều gì?</h3>
             <span className="rounded-full bg-[#FFF0EC] px-3 py-1 text-xs font-bold text-[#3F8240]">{dirty ? "Có thay đổi chưa lưu" : selectedRecord ? `Phiên bản ${selectedVersion} · ${selectedRecord.status === "approved" ? "Đã chốt" : "Nháp"}` : "Kế hoạch mới"}</span>
           </div>
-          <p className="mt-2 text-xs leading-5 text-[#748A74]">Định hướng {direction.version}: {direction.brief.goal}</p>
-          {state.latestApprovedDirection && state.latestApprovedDirection.id !== direction.id && <button type="button" disabled={locked} onClick={plan.useLatestDirection} className="mt-2 rounded-lg bg-[#FFF3DD] p-2 text-xs font-bold text-[#856B3A]">Dùng định hướng mới · phiên bản {state.latestApprovedDirection.version}</button>}
+          <p className="mt-2 text-xs leading-5 text-[#748A74]">Định hướng {direction.version} · {direction.status === "approved" ? "Đã chốt" : "Nháp"}: {direction.brief.goal}</p>
+          {direction.status === "draft" && <p className="mt-2 rounded-xl bg-[#FFF7E8] px-3 py-2 text-xs leading-5 text-[#856B3A]">Kế hoạch đang tự cập nhật theo Định hướng nháp. Hãy chốt Định hướng trước khi chốt Kế hoạch.</p>}
           <label className="mt-4 block text-xs font-bold">Ưu tiên tuần này <span className="font-normal text-[#879487]">(không bắt buộc)</span><textarea value={focus} maxLength={2000} disabled={locked} onChange={(event) => plan.editFocus(event.target.value)} rows={2} placeholder="Ví dụ: Series mới, quay đơn giản trong một buổi…" className="mt-2 w-full rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-4 py-3 text-sm font-normal leading-6" /></label>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button type="button" disabled={locked || !state.aiConfigured || !planName.trim()} onClick={() => void plan.run("generate")} className="inline-flex items-center gap-2 rounded-xl bg-[#284D31] px-5 py-3 text-sm font-bold text-white disabled:opacity-40">{busy === "all" ? <LoaderCircle size={17} className="animate-spin" /> : <Sparkles size={17} />}{selectedVersion ? "AI sắp lại kế hoạch" : "AI lên kế hoạch"}</button>
@@ -130,7 +130,7 @@ export function ContentPlanPage({
 
         <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#DDEBD6] bg-white p-5">
           <button type="button" disabled={locked || !readyToSave} onClick={() => void plan.run("draft")} className="inline-flex items-center gap-2 rounded-xl border border-[#C8DBC1] px-4 py-3 text-sm font-bold disabled:opacity-40"><Save size={16} /> Lưu bản nháp</button>
-          <button type="button" disabled={locked || !readyToSave || (!dirty && selectedRecord?.status === "approved" && selectedVersion === state.versions[0]?.version)} onClick={() => void plan.run("approved")} className="inline-flex items-center gap-2 rounded-xl bg-[#527F56] px-5 py-3 text-sm font-bold text-white disabled:opacity-40"><Check size={16} /> Chốt kế hoạch</button>
+          <button type="button" disabled={locked || !readyToSave || direction.status !== "approved" || (!dirty && selectedRecord?.status === "approved" && selectedVersion === state.versions[0]?.version)} onClick={() => void plan.run("approved")} className="inline-flex items-center gap-2 rounded-xl bg-[#527F56] px-5 py-3 text-sm font-bold text-white disabled:opacity-40"><Check size={16} /> Chốt kế hoạch</button>
           <p className="text-xs leading-5 text-[#748A74]">{readyToSave ? `${items.length} nội dung đã sẵn sàng.` : "Hoàn thiện nội dung hoặc nhờ AI sắp lịch."}</p>
         </section>
 

@@ -7,10 +7,12 @@ import {
 } from "@creator-flow/ai-provider";
 import type {
   ChatStateDto,
+  ContentPlanStateDto,
   DirectionContentDto,
   DirectionStateDto,
   SendChatMessageResponseDto,
 } from "@creator-flow/contracts";
+import { emptyAgentChatSkillCall } from "../src/modules/agent/agentChatPlanner.js";
 
 const directionContent: DirectionContentDto = {
   audience: "Người mới muốn làm nội dung đều đặn.",
@@ -24,7 +26,7 @@ const directionContent: DirectionContentDto = {
   tone: "Gần gũi và rõ ràng.",
 };
 
-test("chat executes Creator DNA and Direction work through registered skills", async () => {
+test("chat executes Creator DNA, Direction and Content Plan work through registered skills", async () => {
   process.env.GEMINI_API_KEY = "chat-agent-skill-test-placeholder";
   const { createApp } = await import("../src/app.js");
   const { database } = await import("../src/database/pool.js");
@@ -36,6 +38,7 @@ test("chat executes Creator DNA and Direction work through registered skills", a
 
   const userId = randomUUID();
   const originalGenerate = GeminiAiProvider.prototype.generateStructured;
+  let lastPlanInstruction: string | null = null;
   GeminiAiProvider.prototype.generateStructured = async function <TOutput>(
     request: StructuredGenerationRequest,
   ) {
@@ -43,6 +46,36 @@ test("chat executes Creator DNA and Direction work through registered skills", a
       return {
         model: "agent-skill-test-model",
         output: { ...directionContent, tone: "Ấm áp, đơn giản và khích lệ." } as TOutput,
+        provider: "google-gemini" as const,
+      };
+    }
+    if (request.schemaName === "content_plan_v2") {
+      const payload = JSON.parse(request.userPrompt) as {
+        brief: {
+          availableDays: number[] | null;
+          weeklyVideoTarget: number | null;
+        };
+        instruction: string | null;
+      };
+      lastPlanInstruction = payload.instruction;
+      const days = payload.brief.availableDays ?? [0, 2, 4];
+      const count = payload.brief.weeklyVideoTarget ?? Math.min(3, days.length);
+      return {
+        model: "agent-skill-test-model",
+        output: {
+          items: Array.from({ length: count }, (_, index) => ({
+            angle: `Góc khai thác ${index + 1}`,
+            cta: "Lưu lại để thực hành.",
+            dayIndex: days[index % days.length],
+            format: "Video ngắn",
+            hook: `Mở đầu ${index + 1}`,
+            objective: "Giá trị",
+            pillarIndex: index % directionContent.pillars.length,
+            platform: "TikTok",
+            productionNotes: "Quay trong một buổi.",
+            title: `Nội dung ${index + 1}`,
+          })),
+        } as TOutput,
         provider: "google-gemini" as const,
       };
     }
@@ -64,7 +97,7 @@ test("chat executes Creator DNA and Direction work through registered skills", a
         reply: "Mình đã hiểu yêu cầu.",
         // Return none deliberately: the deterministic Vietnamese guard must still
         // recognize read/update commands before product data can be touched.
-        skillCall: { goal: "", instruction: "", name: "none", section: "all" },
+        skillCall: emptyAgentChatSkillCall(),
       } as TOutput,
       provider: "google-gemini" as const,
     };
@@ -149,6 +182,42 @@ test("chat executes Creator DNA and Direction work through registered skills", a
     assert.equal(direction.versions[0]?.status, "draft");
     assert.equal(direction.versions[0]?.content.tone, "Ấm áp, đơn giản và khích lệ.");
     assert.equal(direction.versions[1]?.status, "approved");
+
+    const createPlanResponse = await request({
+      content: "Tạo kế hoạch nội dung tuần này, mình rảnh thứ 3 và thứ 7, mục tiêu 3 video.",
+      currentPage: "Kế hoạch nội dung",
+    });
+    assert.equal(createPlanResponse.status, 201);
+    const createPlanChat = (await createPlanResponse.json()) as SendChatMessageResponseDto;
+    assert.equal(
+      createPlanChat.assistantMessage.skillRuns[0]?.name,
+      "content_plan.generate_draft",
+    );
+    const planId = createPlanChat.assistantMessage.skillRuns[0]?.targetId;
+    assert.ok(planId);
+
+    const updatePlanResponse = await request({
+      content: "Cập nhật Kế hoạch nội dung 01, chuyển lịch sang thứ 6, mục tiêu 2 video và ưu tiên nội dung dễ quay.",
+      currentPage: "Kế hoạch nội dung",
+    });
+    assert.equal(updatePlanResponse.status, 201);
+    const updatePlanChat = (await updatePlanResponse.json()) as SendChatMessageResponseDto;
+    assert.equal(
+      updatePlanChat.assistantMessage.skillRuns[0]?.name,
+      "content_plan.update_draft",
+    );
+    assert.equal(updatePlanChat.assistantMessage.skillRuns[0]?.targetVersion, 2);
+    const planState = (await (
+      await fetch(
+        `http://127.0.0.1:${address.port}/api/content-plan?planId=${planId}`,
+        { headers: { Cookie: cookie } },
+      )
+    ).json()) as ContentPlanStateDto;
+    assert.equal(planState.versions[0]?.items.length, 2);
+    assert.ok(planState.versions[0]?.items.every(({ dayIndex }) => dayIndex === 4));
+    assert.equal(planState.versions[0]?.direction.id, direction.versions[0]?.id);
+    assert.equal(planState.versions[0]?.direction.status, "draft");
+    assert.match(lastPlanInstruction ?? "", /ưu tiên nội dung dễ quay/);
   } finally {
     GeminiAiProvider.prototype.generateStructured = originalGenerate;
     await new Promise<void>((resolve, reject) =>

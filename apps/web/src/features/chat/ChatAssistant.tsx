@@ -14,6 +14,7 @@ import { EmsenMark } from "../../components/branding/EmsenMark";
 import { getChat, sendChatMessage } from "./chatApi";
 import {
   chatDraftStorageKey,
+  contentPlanUpdatedEvent,
   creatorDnaUpdatedEvent,
   directionUpdatedEvent,
   formatChatMessageTime,
@@ -32,9 +33,13 @@ const quickPrompts = [
   "Giúp mình phát triển một concept",
   "Mình cần hỗ trợ viết kịch bản",
   "Cho mình xem định hướng hiện tại",
+  "Lên kế hoạch nội dung tuần này",
 ];
 
-const directionSkillLabels = {
+const productSkillLabels = {
+  "content_plan.generate_draft": "Đã tạo bản nháp Kế hoạch",
+  "content_plan.get_current": "Đã đọc Kế hoạch nội dung",
+  "content_plan.update_draft": "Đã cập nhật bản nháp Kế hoạch",
   "direction.generate_draft": "Đã tạo bản nháp Định hướng",
   "direction.get_current": "Đã đọc Định hướng",
   "direction.update_draft": "Đã cập nhật bản nháp Định hướng",
@@ -72,7 +77,9 @@ function AssistantMessage({ message }: { message: ChatMessageDto }) {
           </div>
         ) : null}
         {message.skillRuns
-          .filter((run) => run.name.startsWith("direction."))
+          .filter(
+            (run) => run.target === "direction" || run.target === "content-plan",
+          )
           .map((run) => (
             <div
               className={`mt-3 flex items-start gap-2 rounded-2xl border px-3 py-2.5 ${
@@ -86,10 +93,10 @@ function AssistantMessage({ message }: { message: ChatMessageDto }) {
               <div className="min-w-0">
                 <p className="text-[11px] font-bold">
                   {run.status === "succeeded"
-                    ? directionSkillLabels[
-                        run.name as keyof typeof directionSkillLabels
+                    ? productSkillLabels[
+                        run.name as keyof typeof productSkillLabels
                       ]
-                    : "Chưa thể thao tác với Định hướng"}
+                    : "Chưa thể hoàn thành thao tác"}
                 </p>
                 <p className="mt-0.5 text-[10px] leading-4 opacity-80">{run.summary}</p>
               </div>
@@ -225,6 +232,19 @@ export function ChatAssistant({
         )
       ) {
         window.dispatchEvent(new CustomEvent(directionUpdatedEvent));
+      }
+      const updatedPlan = result.assistantMessage.skillRuns.find(
+        (run) =>
+          run.status === "succeeded" &&
+          (run.name === "content_plan.generate_draft" ||
+            run.name === "content_plan.update_draft"),
+      );
+      if (updatedPlan) {
+        window.dispatchEvent(
+          new CustomEvent(contentPlanUpdatedEvent, {
+            detail: { planId: updatedPlan.targetId },
+          }),
+        );
       }
       setChat((current) =>
         current

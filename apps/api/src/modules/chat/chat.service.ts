@@ -20,9 +20,10 @@ import { database } from "../../database/pool.js";
 import { HttpError } from "../../shared/http.js";
 import { getCreatorDnaState } from "../creator-dna/creatorDna.service.js";
 import {
-  isDirectionChatSkillCall,
-  resolveDirectionSkillCall,
-  type DirectionChatSkillCall,
+  emptyAgentChatSkillCall,
+  isAgentChatSkillCall,
+  resolveAgentSkillCall,
+  type AgentChatSkillCall,
 } from "../agent/agentChatPlanner.js";
 import { agentSkillRegistry, getAgentSkillCatalog } from "../agent/agentSkills.js";
 import type { AgentSkillExecution } from "../agent/agentSkill.registry.js";
@@ -32,6 +33,11 @@ import type {
   CaptureChatSignalsInput,
   CaptureChatSignalsOutput,
 } from "../agent/creatorDna.skills.js";
+import type {
+  ContentPlanDraftSkillInput,
+  ContentPlanSkillOutput,
+  GetCurrentContentPlanInput,
+} from "../agent/contentPlan.skills.js";
 import type {
   DirectionDraftSkillInput,
   DirectionSkillOutput,
@@ -89,7 +95,7 @@ type ChatAiOutput = {
   }>;
   nextQuestionId: string;
   reply: string;
-  skillCall: DirectionChatSkillCall;
+  skillCall: AgentChatSkillCall;
 };
 
 
@@ -127,6 +133,7 @@ function isAgentSkillRun(value: unknown): value is AgentSkillRunDto {
       (candidate.status === "failed" || candidate.status === "succeeded") &&
       typeof candidate.summary === "string" &&
       (candidate.target === null ||
+        candidate.target === "content-plan" ||
         candidate.target === "creator-dna" ||
         candidate.target === "direction") &&
       (candidate.targetId === null || typeof candidate.targetId === "string") &&
@@ -165,14 +172,27 @@ const chatResponseSchema = {
       type: "string",
     },
     skillCall: {
-      description: "Skill Định hướng cần gọi. Dùng none khi tin nhắn không yêu cầu đọc hoặc thay đổi Định hướng.",
+      description: "Một skill nghiệp vụ Emsen cần gọi, hoặc none nếu chỉ cần trò chuyện.",
       properties: {
+        availableDays: {
+          description: "Các ngày rảnh từ 0 (Thứ Hai) đến 6 (Chủ nhật), hoặc [] nếu AI tự quyết định/không được nêu.",
+          items: { maximum: 6, minimum: 0, type: "integer" },
+          maxItems: 7,
+          type: "array",
+        },
+        focus: {
+          description: "Trọng tâm kế hoạch người dùng nêu rõ, hoặc chuỗi rỗng.",
+          maxLength: 2_000,
+          type: "string",
+        },
         goal: {
           description: "Mục tiêu kênh người dùng nêu rõ, hoặc chuỗi rỗng nếu chưa có.",
+          maxLength: 1_000,
           type: "string",
         },
         instruction: {
           description: "Yêu cầu chỉnh sửa cụ thể của người dùng, hoặc chuỗi rỗng.",
+          maxLength: 4_000,
           type: "string",
         },
         name: {
@@ -181,15 +201,68 @@ const chatResponseSchema = {
             "direction.get_current",
             "direction.generate_draft",
             "direction.update_draft",
+            "content_plan.get_current",
+            "content_plan.generate_draft",
+            "content_plan.update_draft",
           ],
           type: "string",
+        },
+        planId: {
+          description: "ID kế hoạch nếu người dùng hoặc context cung cấp rõ, nếu không để rỗng.",
+          type: "string",
+        },
+        planName: {
+          description: "Tên kế hoạch được gọi rõ hoặc tên kế hoạch mới, nếu không để rỗng.",
+          maxLength: 120,
+          type: "string",
+        },
+        replaceAvailableDays: {
+          description: "true chỉ khi người dùng muốn đổi ngày rảnh hoặc giao AI tự quyết định lại.",
+          type: "boolean",
+        },
+        replaceFocus: {
+          description: "true chỉ khi người dùng muốn đổi trọng tâm tuần.",
+          type: "boolean",
+        },
+        replaceWeekStart: {
+          description: "true chỉ khi người dùng nói rõ tuần cần đổi.",
+          type: "boolean",
+        },
+        replaceWeeklyVideoTarget: {
+          description: "true chỉ khi người dùng muốn đổi mục tiêu số video hoặc giao AI tự quyết định lại.",
+          type: "boolean",
         },
         section: {
           enum: ["all", "positioning", "tone", "audience", "pillars"],
           type: "string",
         },
+        weekStart: {
+          description: "Ngày Thứ Hai dạng YYYY-MM-DD nếu được nêu rõ, nếu không để rỗng.",
+          type: "string",
+        },
+        weeklyVideoTarget: {
+          description: "Mục tiêu 1–7 video, hoặc 0 nếu AI tự quyết định/không được nêu.",
+          maximum: 7,
+          minimum: 0,
+          type: "integer",
+        },
       },
-      required: ["name", "section", "goal", "instruction"],
+      required: [
+        "name",
+        "section",
+        "goal",
+        "instruction",
+        "planId",
+        "planName",
+        "weekStart",
+        "focus",
+        "availableDays",
+        "weeklyVideoTarget",
+        "replaceAvailableDays",
+        "replaceWeeklyVideoTarget",
+        "replaceWeekStart",
+        "replaceFocus",
+      ],
       type: "object",
     },
   },
@@ -220,7 +293,7 @@ function isChatAiOutput(value: unknown): value is ChatAiOutput {
       candidate.reply.trim() &&
       typeof candidate.nextQuestionId === "string" &&
       proactiveQuestionIds.includes(candidate.nextQuestionId) &&
-      isDirectionChatSkillCall(candidate.skillCall) &&
+      isAgentChatSkillCall(candidate.skillCall) &&
       Array.isArray(candidate.extractedSignals) &&
       candidate.extractedSignals.length <= 3 &&
       candidate.extractedSignals.every(
@@ -559,8 +632,8 @@ function buildSystemPrompt(
   const questionBank = proactiveQuestions
     .map(({ promptId, question }) => `${promptId}: ${question}`)
     .join("\n");
-  const directionSkills = getAgentSkillCatalog().filter(({ name }) =>
-    name.startsWith("direction."),
+  const productSkills = getAgentSkillCatalog().filter(({ name }) =>
+    name.startsWith("direction.") || name.startsWith("content_plan."),
   );
 
   return `Bạn là emsen buddy, trợ lý sáng tạo thân thiện cho creator Việt Nam.
@@ -577,17 +650,22 @@ Mục tiêu:
 - Dùng direction.get_current khi người dùng muốn xem, nghe giải thích hoặc tóm tắt định hướng hiện tại.
 - Dùng direction.generate_draft khi người dùng muốn tạo một định hướng mới.
 - Dùng direction.update_draft khi người dùng muốn đổi toàn bộ hoặc chỉnh riêng định vị, giọng điệu, khán giả hay trụ cột.
+- Dùng content_plan.get_current khi người dùng muốn xem hoặc nghe tóm tắt một kế hoạch nội dung.
+- Dùng content_plan.generate_draft khi người dùng yêu cầu tạo một kế hoạch mới. Trích tên, tuần, ngày rảnh, số video và trọng tâm nếu họ nói rõ.
+- Dùng content_plan.update_draft khi người dùng muốn sắp lại hoặc thay đổi kế hoạch hiện có. planName/planId dùng để chọn đúng kế hoạch; không tự đoán nếu có nhiều kết quả.
+- Với ngày rảnh, 0 là Thứ Hai và 6 là Chủ nhật. weeklyVideoTarget bằng 0 nghĩa là để AI tự quyết định.
+- Các cờ replace... chỉ được bật khi người dùng yêu cầu đổi trường tương ứng; nếu không, skill cập nhật phải giữ dữ liệu hiện tại.
 - Chỉ dùng skill ghi khi người dùng yêu cầu hành động trực tiếp. Nếu họ chỉ hỏi giả định, xin lời khuyên hoặc hỏi "có nên", hãy trả lời tư vấn và dùng none.
-- Skill tạo/chỉnh Định hướng chỉ tạo bản nháp; tuyệt đối không nói rằng đã chốt hoặc phê duyệt thay người dùng.
-- Nếu người dùng yêu cầu chốt/phê duyệt Định hướng, không gọi skill ghi; giải thích rằng họ cần xem lại và chốt trong màn hình Định hướng.
-- Khi chọn một skill Định hướng, đặt nextQuestionId là "none" để tập trung hoàn thành yêu cầu chính.
-- Nếu không cần thao tác Định hướng, skillCall.name phải là "none".
+- Skill tạo/chỉnh Định hướng hoặc Kế hoạch chỉ tạo bản nháp; tuyệt đối không nói rằng đã chốt hoặc phê duyệt thay người dùng.
+- Nếu người dùng yêu cầu chốt/phê duyệt hoặc xóa, không gọi skill ghi; giải thích rằng họ cần xác nhận trong màn hình nghiệp vụ.
+- Khi chọn một skill nghiệp vụ, đặt nextQuestionId là "none" để tập trung hoàn thành yêu cầu chính.
+- Nếu không cần thao tác dữ liệu hệ thống, skillCall.name phải là "none".
 
 Trang người dùng đang xem: ${currentPage}
 Creator DNA có cấu trúc: ${JSON.stringify(profileContext(profile))}
 Tín hiệu đã xác nhận gần đây: ${JSON.stringify(learnedSignals.slice(0, 20).map(({ category, summary }) => ({ category, summary })))}
 activeCollectionIntent: ${JSON.stringify(activeIntent)}
-Các skill Định hướng được phép dùng: ${JSON.stringify(directionSkills)}
+Các skill nghiệp vụ được phép dùng: ${JSON.stringify(productSkills)}
 
 Ngân hàng câu hỏi:
 ${questionBank}`;
@@ -630,12 +708,7 @@ function fallbackChatOutput(
     extractedSignals: activeIntent ? fallbackSignal(content, activeIntent) : [],
     nextQuestionId: getNextProactiveQuestion(promptCursor).promptId,
     reply,
-    skillCall: resolveDirectionSkillCall(content, {
-      goal: "",
-      instruction: "",
-      name: "none",
-      section: "all",
-    }),
+    skillCall: resolveAgentSkillCall(content, emptyAgentChatSkillCall()),
   };
 }
 
@@ -684,7 +757,7 @@ async function generateChatOutput(
       output = {
         ...result.output,
         extractedSignals: activeIntent ? result.output.extractedSignals : [],
-        skillCall: resolveDirectionSkillCall(input.content, result.output.skillCall),
+        skillCall: resolveAgentSkillCall(input.content, result.output.skillCall),
       };
       responseProvider = result.provider;
       model = result.model;
@@ -707,10 +780,12 @@ async function generateChatOutput(
   return { errorMessage, model, output, provider: responseProvider, status };
 }
 
-async function executeDirectionChatSkill(
+type ProductSkillOutput = ContentPlanSkillOutput | DirectionSkillOutput;
+
+async function executeAgentChatSkill(
   userId: string,
-  call: DirectionChatSkillCall,
-): Promise<AgentSkillExecution<DirectionSkillOutput> | null> {
+  call: AgentChatSkillCall,
+): Promise<AgentSkillExecution<ProductSkillOutput> | null> {
   if (call.name === "none") {
     return null;
   }
@@ -721,23 +796,56 @@ async function executeDirectionChatSkill(
       {},
     );
   }
-  const input: DirectionDraftSkillInput = {
-    goal: call.goal,
+  if (
+    call.name === "direction.generate_draft" ||
+    call.name === "direction.update_draft"
+  ) {
+    const input: DirectionDraftSkillInput = {
+      goal: call.goal,
+      instruction: call.instruction,
+      section: call.section,
+    };
+    return agentSkillRegistry.execute<DirectionDraftSkillInput, DirectionSkillOutput>(
+      call.name,
+      { userId },
+      input,
+    );
+  }
+  if (call.name === "content_plan.get_current") {
+    const input: GetCurrentContentPlanInput = {
+      planId: call.planId,
+      planName: call.planName,
+    };
+    return agentSkillRegistry.execute<
+      GetCurrentContentPlanInput,
+      ContentPlanSkillOutput
+    >(call.name, { userId }, input);
+  }
+  const input: ContentPlanDraftSkillInput = {
+    availableDays: call.availableDays.length ? call.availableDays : null,
+    focus: call.focus,
     instruction: call.instruction,
-    section: call.section,
+    planId: call.planId,
+    planName: call.planName,
+    replaceAvailableDays: call.replaceAvailableDays,
+    replaceFocus: call.replaceFocus,
+    replaceWeekStart: call.replaceWeekStart,
+    replaceWeeklyVideoTarget: call.replaceWeeklyVideoTarget,
+    weekStart: call.weekStart,
+    weeklyVideoTarget: call.weeklyVideoTarget || null,
   };
-  return agentSkillRegistry.execute<DirectionDraftSkillInput, DirectionSkillOutput>(
+  return agentSkillRegistry.execute<ContentPlanDraftSkillInput, ContentPlanSkillOutput>(
     call.name,
     { userId },
     input,
   );
 }
 
-function directionSkillFailureReply(error: unknown) {
+function agentSkillFailureReply(error: unknown) {
   if (error instanceof HttpError) {
     return `Mình chưa thể thực hiện thay đổi này: ${error.message}`;
   }
-  return "Mình chưa thể thao tác với Định hướng lúc này. Bản hiện tại vẫn được giữ nguyên; bạn hãy thử lại sau nhé.";
+  return "Mình chưa thể thao tác với dữ liệu lúc này. Bản hiện tại vẫn được giữ nguyên; bạn hãy thử lại sau nhé.";
 }
 
 export async function sendChatMessage(
@@ -765,25 +873,25 @@ export async function sendChatMessage(
     input,
     activeQuestion?.intent ?? null,
   );
-  const directionExecution = await executeDirectionChatSkill(
+  const productExecution = await executeAgentChatSkill(
     userId,
     generated.output.skillCall,
   );
   const questionExecution =
-    !directionExecution && generated.output.nextQuestionId !== "none"
+    !productExecution && generated.output.nextQuestionId !== "none"
       ? await selectProactiveQuestion(userId, 0, generated.output.nextQuestionId)
       : null;
   const nextQuestion = questionExecution?.output.intent ?? null;
-  const assistantContent = directionExecution
-    ? directionExecution.ok
-      ? directionExecution.output.reply
-      : directionSkillFailureReply(directionExecution.error)
+  const assistantContent = productExecution
+    ? productExecution.ok
+      ? productExecution.output.reply
+      : agentSkillFailureReply(productExecution.error)
     : nextQuestion
       ? `${generated.output.reply.trim()}\n\n${nextQuestion.question}`
       : generated.output.reply.trim();
   const assistantMessageId = randomUUID();
   const skillRuns: AgentSkillRunDto[] = [
-    ...(directionExecution ? [directionExecution.run] : []),
+    ...(productExecution ? [productExecution.run] : []),
     ...(questionExecution ? [questionExecution.run] : []),
   ];
   const client = await database.connect();

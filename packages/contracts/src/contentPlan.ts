@@ -53,6 +53,7 @@ export type ContentPlanStateDto = {
   plans: ContentPlanSummaryDto[];
   activePlanId: string | null;
   versions: ContentPlanVersionDto[];
+  latestDirection: DirectionVersionDto | null;
   latestApprovedDirection: DirectionVersionDto | null;
   aiConfigured: boolean;
 };
@@ -67,5 +68,6 @@ export type SaveContentPlanRequestDto = {
 export type GenerateContentPlanRequestDto = Omit<SaveContentPlanRequestDto, "items" | "status"> & {
   itemId?: string;
   dayIndex?: number;
+  instruction?: string;
   items?: ContentPlanItemDto[];
 };

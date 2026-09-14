@@ -99,11 +99,32 @@ test("content planning and per-user API keys integration", async (t) => {
       assert.equal((provider as unknown as { apiKey: string }).apiKey, personalKey);
       assert.equal((await request("/settings/ai-key", "PUT", { apiKey: "bad" })).status, 400);
     });
-    await t.test("requires an owned approved direction, ignores a later draft", async () => {
+    await t.test("exposes the latest draft, preserves the latest approval and enforces ownership", async () => {
       const state = await (await request("/content-plan?weekStart=2026-09-07")).json() as ContentPlanStateDto;
+      assert.equal(state.latestDirection!.id, draftDirection.id);
       assert.equal(state.latestApprovedDirection!.id, direction.id);
-      assert.equal((await request("/content-plan/generate", "POST", { ...generation, directionId: draftDirection.id })).status, 404);
       assert.equal((await request("/content-plan/generate", "POST", generation, cookies[1])).status, 404);
+      const draftResponse = await request("/content-plan/versions", "POST", {
+        planId: null,
+        baseVersion: 0,
+        brief: { name: "Kiểm tra định hướng nháp", weekStart: "2026-09-21", focus: "" },
+        directionId: draftDirection.id,
+        items,
+        status: "draft",
+      });
+      assert.equal(draftResponse.status, 201);
+      const draftPlan = await draftResponse.json() as ContentPlanVersionDto;
+      assert.equal(draftPlan.direction.id, draftDirection.id);
+      assert.equal(draftPlan.status, "draft");
+      assert.equal((await request("/content-plan/versions", "POST", {
+        planId: null,
+        baseVersion: 0,
+        brief: { name: "Không được chốt", weekStart: "2026-09-28", focus: "" },
+        directionId: draftDirection.id,
+        items,
+        status: "approved",
+      })).status, 409);
+      await database.query("DELETE FROM content_plans WHERE id = $1 AND user_id = $2", [draftPlan.planId, ids[0]]);
     });
     await t.test("generates seven days using personal key, DNA and approved direction", async () => {
       const response = await request("/content-plan/generate", "POST", generation); assert.equal(response.status, 201);

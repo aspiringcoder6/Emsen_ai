@@ -141,7 +141,10 @@ export type AgentSkillName =
   | "creator_dna.capture_chat_signals"
   | "direction.get_current"
   | "direction.generate_draft"
-  | "direction.update_draft";
+  | "direction.update_draft"
+  | "content_plan.get_current"
+  | "content_plan.generate_draft"
+  | "content_plan.update_draft";
 
 export type AgentSkillMode = "read" | "draft-write" | "write";
 
@@ -152,7 +155,7 @@ export type AgentSkillRunDto = {
   name: AgentSkillName;
   status: "failed" | "succeeded";
   summary: string;
-  target: "creator-dna" | "direction" | null;
+  target: "content-plan" | "creator-dna" | "direction" | null;
   targetId: string | null;
   targetVersion: number | null;
 };

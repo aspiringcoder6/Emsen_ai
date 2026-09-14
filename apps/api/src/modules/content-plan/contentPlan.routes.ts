@@ -41,6 +41,9 @@ contentPlanRouter.post("/versions", async (request, response) => {
 contentPlanRouter.post("/generate", async (request, response) => {
   const body = planObject(request.body);
   const input = common(body);
+  if (body.instruction !== undefined && (typeof body.instruction !== "string" || body.instruction.length > 4_000)) {
+    throw new HttpError(400, "INVALID_PLAN_INSTRUCTION", "Yêu cầu điều chỉnh kế hoạch không hợp lệ.");
+  }
   if (body.itemId !== undefined && (typeof body.itemId !== "string" || !body.itemId.trim() || body.itemId.length > 100)) {
     throw new HttpError(400, "INVALID_PLAN_ITEM", "Nội dung cần tạo lại không hợp lệ.");
   }
@@ -51,6 +54,9 @@ contentPlanRouter.post("/generate", async (request, response) => {
   response.status(201).json(await generateContentPlan(request.auth!.userId, { ...input,
     ...(body.itemId !== undefined ? { itemId: body.itemId.trim() } : {}),
     ...(body.dayIndex !== undefined ? { dayIndex: body.dayIndex as number } : {}),
+    ...(typeof body.instruction === "string" && body.instruction.trim()
+      ? { instruction: body.instruction.trim() }
+      : {}),
     ...(body.items !== undefined ? { items: body.items as ContentPlanItemDto[] } : {}),
   }));
 });

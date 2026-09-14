@@ -5,11 +5,43 @@ import type {
   ContentPlanVersionDto,
   DirectionVersionDto,
 } from "@creator-flow/contracts";
+import { contentPlanUpdatedEvent, directionUpdatedEvent } from "../chat/chatConfig";
 import { generateContentPlan, getContentPlan, saveContentPlan } from "./contentPlanApi";
 import { currentWeekStart, emptyPlan, scheduleDays } from "./contentPlanUtils";
 
 function defaultPlanName(count: number) {
   return `Kế hoạch nội dung ${String(count + 1).padStart(2, "0")}`;
+}
+
+function rebaseItems(
+  items: ContentPlanItemDto[],
+  direction: DirectionVersionDto,
+) {
+  const pillarCount = direction.content.pillars.length;
+  return items.map((item) => ({
+    ...item,
+    pillarIndex: Math.abs(item.pillarIndex) % pillarCount,
+  }));
+}
+
+function stateWithVersion(
+  state: ContentPlanStateDto,
+  version: ContentPlanVersionDto,
+): ContentPlanStateDto {
+  const summary = {
+    id: version.planId,
+    name: version.brief.name,
+    weekStart: version.brief.weekStart,
+    latestVersion: version.version,
+    latestStatus: version.status,
+    updatedAt: version.createdAt,
+  };
+  return {
+    ...state,
+    activePlanId: version.planId,
+    versions: [version, ...state.versions.filter(({ id }) => id !== version.id)],
+    plans: [summary, ...state.plans.filter((plan) => plan.id !== version.planId)],
+  };
 }
 
 export function useContentPlan(active: boolean) {
@@ -26,6 +58,8 @@ export function useContentPlan(active: boolean) {
   const [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(false);
   const busyRef = useRef(false);
+  const wasActive = useRef(false);
+  const pendingAgentPlanId = useRef<string | null>(null);
   const requestId = useRef(0);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
@@ -50,7 +84,7 @@ export function useContentPlan(active: boolean) {
     markDirty(false);
   };
   const prepareNew = (current: ContentPlanStateDto) => {
-    const nextDirection = current.latestApprovedDirection;
+    const nextDirection = current.latestDirection;
     setState({ ...current, activePlanId: null, versions: [] });
     setActivePlanId(null);
     setPlanName(defaultPlanName(current.plans.length));
@@ -76,12 +110,96 @@ export function useContentPlan(active: boolean) {
           ...current,
           plans: result.plans,
           aiConfigured: result.aiConfigured,
+          latestDirection: result.latestDirection,
           latestApprovedDirection: result.latestApprovedDirection,
         } : result);
+        if (
+          result.latestDirection &&
+          direction?.id !== result.latestDirection.id
+        ) {
+          const latestDirection = result.latestDirection;
+          setDirection(latestDirection);
+          setItems((current) =>
+            current.length
+              ? rebaseItems(current, latestDirection)
+              : emptyPlan(
+                  latestDirection,
+                  scheduleDays(availableDays, weeklyVideoTarget),
+                ),
+          );
+          markDirty(true);
+          setNotice(
+            `Đã tự nối các chỉnh sửa đang làm với Định hướng phiên bản ${latestDirection.version}. Nội dung chưa lưu của bạn vẫn được giữ.`,
+          );
+        }
+        return;
+      }
+      const current = result.versions[0];
+      const latestDirection = result.latestDirection;
+      if (current && latestDirection && current.direction.id !== latestDirection.id) {
+        const rebasedItems = rebaseItems(current.items, latestDirection);
+        let aiSyncError: unknown = null;
+        if (result.aiConfigured) {
+          try {
+            const updated = await generateContentPlan({
+              baseVersion: current.version,
+              brief: current.brief,
+              directionId: latestDirection.id,
+              instruction: "Cập nhật toàn bộ kế hoạch để phù hợp với Định hướng mới nhất, đồng thời giữ lịch quay và mục tiêu tuần hiện tại.",
+              items: rebasedItems,
+              planId: current.planId,
+            });
+            if (id !== requestId.current) return;
+            setState(stateWithVersion(result, updated));
+            apply(updated);
+            setNotice(
+              `Đã tự cập nhật ${updated.brief.name} theo Định hướng phiên bản ${latestDirection.version}. Đây là bản nháp để bạn xem lại trước khi chốt.`,
+            );
+            return;
+          } catch (syncError) {
+            if (id !== requestId.current) return;
+            aiSyncError = syncError;
+          }
+        }
+        try {
+          const updated = await saveContentPlan({
+            baseVersion: current.version,
+            brief: current.brief,
+            directionId: latestDirection.id,
+            items: rebasedItems,
+            planId: current.planId,
+            status: "draft",
+          });
+          if (id !== requestId.current) return;
+          setState(stateWithVersion(result, updated));
+          apply(updated);
+          setNotice(
+            result.aiConfigured
+              ? `AI chưa thể viết lại nội dung, nên Emsen đã tự nối ${updated.brief.name} với Định hướng phiên bản ${latestDirection.version} và giữ nguyên nội dung trong một bản nháp.`
+              : `Đã tự nối ${updated.brief.name} với Định hướng phiên bản ${latestDirection.version} và giữ nguyên nội dung trong một bản nháp. Bạn có thể thêm API key để nhờ AI sắp lại.`,
+          );
+          return;
+        } catch (syncError) {
+          if (id !== requestId.current) return;
+          const visibleError = syncError instanceof Error ? syncError : aiSyncError;
+          setError(
+            visibleError instanceof Error
+              ? visibleError.message
+              : "Chưa thể lưu kế hoạch theo Định hướng mới.",
+          );
+        }
+        setState(result);
+        apply(current);
+        setDirection(latestDirection);
+        setItems(rebasedItems);
+        markDirty(true);
+        setNotice(
+          `Đã chuyển kế hoạch sang Định hướng phiên bản ${latestDirection.version}. Nội dung hiện tại được giữ lại; bạn có thể nhờ AI sắp lại trước khi chốt.`,
+        );
         return;
       }
       setState(result);
-      if (result.versions[0]) apply(result.versions[0]);
+      if (current) apply(current);
       else prepareNew(result);
     } catch (error) {
       if (id === requestId.current) setError(error instanceof Error ? error.message : "Chưa tải được kế hoạch.");
@@ -91,8 +209,76 @@ export function useContentPlan(active: boolean) {
   };
 
   useEffect(() => {
-    if (active && !state && !busyRef.current) void load();
-  }, [active, state]);
+    const justOpened = active && !wasActive.current;
+    wasActive.current = active;
+    if (justOpened && !busyRef.current) {
+      const pendingPlanId = pendingAgentPlanId.current;
+      pendingAgentPlanId.current = null;
+      if (pendingPlanId) {
+        if (
+          dirtyRef.current &&
+          !window.confirm(
+            "Emsen vừa tạo một bản nháp kế hoạch qua chat. Bỏ các thay đổi chưa lưu để xem bản đó?",
+          )
+        ) {
+          setNotice(
+            "Bản Emsen vừa tạo vẫn được lưu an toàn. Các chỉnh sửa hiện tại của bạn đang được giữ lại.",
+          );
+          void load(activePlanId ?? undefined, true);
+          return;
+        }
+        markDirty(false);
+        void load(pendingPlanId);
+        return;
+      }
+      const preserveDraft = dirtyRef.current || (state !== null && activePlanId === null);
+      void load(activePlanId ?? undefined, preserveDraft);
+    }
+    // Refresh on tab entry while retaining local edits and unsaved new plans.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+  useEffect(() => {
+    const reloadAfterAgentChange = (event: Event) => {
+      const targetPlanId = (event as CustomEvent<{ planId?: string }>).detail?.planId;
+      if (!active) {
+        pendingAgentPlanId.current = targetPlanId || null;
+        return;
+      }
+      if (dirtyRef.current) {
+        if (
+          window.confirm(
+            "Emsen vừa tạo một bản nháp kế hoạch qua chat. Bạn có thay đổi chưa lưu ở đây. Bỏ các thay đổi này để xem bản Emsen vừa tạo?",
+          )
+        ) {
+          markDirty(false);
+          void load(targetPlanId || activePlanId || undefined);
+        } else {
+          setNotice(
+            "Bản Emsen vừa tạo vẫn được lưu an toàn. Các chỉnh sửa hiện tại của bạn đang được giữ lại.",
+          );
+        }
+        return;
+      }
+      if (active && !busyRef.current) {
+        void load(targetPlanId || activePlanId || undefined);
+      }
+    };
+    window.addEventListener(contentPlanUpdatedEvent, reloadAfterAgentChange);
+    return () => window.removeEventListener(contentPlanUpdatedEvent, reloadAfterAgentChange);
+    // The listener follows the currently selected plan.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, activePlanId]);
+  useEffect(() => {
+    const reloadAfterDirectionChange = () => {
+      if (!active || busyRef.current) return;
+      const preserveDraft = dirtyRef.current || (state !== null && activePlanId === null);
+      void load(activePlanId ?? undefined, preserveDraft);
+    };
+    window.addEventListener(directionUpdatedEvent, reloadAfterDirectionChange);
+    return () => window.removeEventListener(directionUpdatedEvent, reloadAfterDirectionChange);
+    // Refresh immediately when chat changes Direction while this tab is visible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, activePlanId, state]);
   useEffect(() => () => { requestId.current++; }, []);
   useEffect(() => {
     if (!dirty) return;
@@ -130,20 +316,7 @@ export function useContentPlan(active: boolean) {
       if (id !== requestId.current) return;
       setState((current) => {
         if (!current) return current;
-        const summary = {
-          id: version.planId,
-          name: version.brief.name,
-          weekStart: version.brief.weekStart,
-          latestVersion: version.version,
-          latestStatus: version.status,
-          updatedAt: version.createdAt,
-        };
-        return {
-          ...current,
-          activePlanId: version.planId,
-          versions: [version, ...current.versions],
-          plans: [summary, ...current.plans.filter((plan) => plan.id !== version.planId)],
-        };
+        return stateWithVersion(current, version);
       });
       apply(version);
       setNotice(kind === "approved"
@@ -195,12 +368,5 @@ export function useContentPlan(active: boolean) {
     startNewPlan: () => { if (state && canDiscard()) prepareNew(state); },
     changeWeek: (value: string) => { if (value && value !== weekStart) { setWeekStart(value); markDirty(true); } },
     reload: () => { if (canDiscard()) void load(activePlanId ?? undefined); },
-    useLatestDirection: () => {
-      if (state?.latestApprovedDirection && canDiscard()) {
-        setDirection(state.latestApprovedDirection);
-        setItems(emptyPlan(state.latestApprovedDirection, scheduleDays(availableDays, weeklyVideoTarget)));
-        markDirty(true);
-      }
-    },
   };
 }
