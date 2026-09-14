@@ -5,6 +5,7 @@ import {
   contentPlanSchemaSql,
 } from "./contentPlanSchema.js";
 import { scriptSchemaSql } from "./scriptSchema.js";
+import { agentSkillSchemaSql } from "./agentSkillSchema.js";
 import {
   authSchemaCompatibilitySql,
   aiChatReplyLinkSchemaSql,
@@ -27,6 +28,7 @@ const migrations = [
   { sql: phoneAuthSchemaSql, version: 9 },
   { sql: contentPlanCollectionsSchemaSql, version: 10 },
   { sql: contentPlanItemLinksSchemaSql, version: 11 },
+  { sql: agentSkillSchemaSql, version: 12 },
 ];
 
 export async function migrateDatabase() {

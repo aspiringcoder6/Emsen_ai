@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type {
+  AgentSkillMode,
+  AgentSkillName,
+  AgentSkillRunDto,
   AiPreferencesDto,
   AiProactiveFrequency,
   ChatCollectionIntentDto,
@@ -14,10 +17,28 @@ import type {
 import type { PoolClient } from "pg";
 import { getAiKeySettings, getUserAiProvider } from "../ai/aiKey.service.js";
 import { database } from "../../database/pool.js";
+import { HttpError } from "../../shared/http.js";
 import { getCreatorDnaState } from "../creator-dna/creatorDna.service.js";
 import {
+  isDirectionChatSkillCall,
+  resolveDirectionSkillCall,
+  type DirectionChatSkillCall,
+} from "../agent/agentChatPlanner.js";
+import { agentSkillRegistry, getAgentSkillCatalog } from "../agent/agentSkills.js";
+import type { AgentSkillExecution } from "../agent/agentSkill.registry.js";
+import type {
+  AskProactiveQuestionInput,
+  AskProactiveQuestionOutput,
+  CaptureChatSignalsInput,
+  CaptureChatSignalsOutput,
+} from "../agent/creatorDna.skills.js";
+import type {
+  DirectionDraftSkillInput,
+  DirectionSkillOutput,
+  GetCurrentDirectionInput,
+} from "../agent/direction.skills.js";
+import {
   getNextProactiveQuestion,
-  getProactiveQuestion,
   proactiveQuestionIds,
   proactiveQuestions,
 } from "./proactiveQuestions.js";
@@ -40,6 +61,7 @@ type MessageRow = {
   model: string | null;
   provider: ChatMessageDto["provider"];
   role: ChatMessageDto["role"];
+  skill_runs: unknown;
 };
 
 type SignalRow = {
@@ -67,6 +89,7 @@ type ChatAiOutput = {
   }>;
   nextQuestionId: string;
   reply: string;
+  skillCall: DirectionChatSkillCall;
 };
 
 
@@ -84,6 +107,37 @@ const signalCategories: CreatorDnaSignalCategory[] = [
   "Sản phẩm phù hợp",
   "Điều cần tránh",
 ];
+
+const agentSkillNames = new Set<AgentSkillName>(
+  getAgentSkillCatalog().map(({ name }) => name),
+);
+const agentSkillModes = new Set<AgentSkillMode>(["read", "draft-write", "write"]);
+
+function isAgentSkillRun(value: unknown): value is AgentSkillRunDto {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<AgentSkillRunDto>;
+  return Boolean(
+    typeof candidate.id === "string" &&
+      typeof candidate.name === "string" &&
+      agentSkillNames.has(candidate.name as AgentSkillName) &&
+      typeof candidate.mode === "string" &&
+      agentSkillModes.has(candidate.mode as AgentSkillMode) &&
+      (candidate.status === "failed" || candidate.status === "succeeded") &&
+      typeof candidate.summary === "string" &&
+      (candidate.target === null ||
+        candidate.target === "creator-dna" ||
+        candidate.target === "direction") &&
+      (candidate.targetId === null || typeof candidate.targetId === "string") &&
+      (candidate.targetVersion === null || Number.isSafeInteger(candidate.targetVersion)) &&
+      typeof candidate.executedAt === "string",
+  );
+}
+
+function parseAgentSkillRuns(value: unknown) {
+  return Array.isArray(value) ? value.filter(isAgentSkillRun) : [];
+}
 
 const chatResponseSchema = {
   properties: {
@@ -110,8 +164,36 @@ const chatResponseSchema = {
       description: "Câu trả lời chính bằng tiếng Việt, chưa bao gồm câu hỏi theo ID.",
       type: "string",
     },
+    skillCall: {
+      description: "Skill Định hướng cần gọi. Dùng none khi tin nhắn không yêu cầu đọc hoặc thay đổi Định hướng.",
+      properties: {
+        goal: {
+          description: "Mục tiêu kênh người dùng nêu rõ, hoặc chuỗi rỗng nếu chưa có.",
+          type: "string",
+        },
+        instruction: {
+          description: "Yêu cầu chỉnh sửa cụ thể của người dùng, hoặc chuỗi rỗng.",
+          type: "string",
+        },
+        name: {
+          enum: [
+            "none",
+            "direction.get_current",
+            "direction.generate_draft",
+            "direction.update_draft",
+          ],
+          type: "string",
+        },
+        section: {
+          enum: ["all", "positioning", "tone", "audience", "pillars"],
+          type: "string",
+        },
+      },
+      required: ["name", "section", "goal", "instruction"],
+      type: "object",
+    },
   },
-  required: ["reply", "nextQuestionId", "extractedSignals"],
+  required: ["reply", "nextQuestionId", "extractedSignals", "skillCall"],
   type: "object",
 } satisfies Record<string, unknown>;
 
@@ -138,6 +220,7 @@ function isChatAiOutput(value: unknown): value is ChatAiOutput {
       candidate.reply.trim() &&
       typeof candidate.nextQuestionId === "string" &&
       proactiveQuestionIds.includes(candidate.nextQuestionId) &&
+      isDirectionChatSkillCall(candidate.skillCall) &&
       Array.isArray(candidate.extractedSignals) &&
       candidate.extractedSignals.length <= 3 &&
       candidate.extractedSignals.every(
@@ -225,6 +308,25 @@ async function ensureWelcomeMessage(
   );
 }
 
+async function selectProactiveQuestion(
+  userId: string,
+  cursor: number,
+  promptId?: string,
+) {
+  const input: AskProactiveQuestionInput = {
+    cursor,
+    ...(promptId ? { promptId } : {}),
+  };
+  const execution = await agentSkillRegistry.execute<
+    AskProactiveQuestionInput,
+    AskProactiveQuestionOutput
+  >("creator_dna.ask_proactive_question", { userId }, input);
+  if (!execution.ok) {
+    throw execution.error;
+  }
+  return execution;
+}
+
 function isProactiveDue(row: PreferenceRow) {
   const nextAt = nextProactiveDate(row);
   return Boolean(nextAt && nextAt.getTime() <= Date.now());
@@ -245,17 +347,28 @@ async function ensureDueProactiveQuestion(userId: string) {
     await ensureWelcomeMessage(client, conversationId, userId);
 
     if (isProactiveDue(preference)) {
-      const nextQuestion = getNextProactiveQuestion(preference.proactive_prompt_cursor);
+      const questionExecution = await selectProactiveQuestion(
+        userId,
+        preference.proactive_prompt_cursor,
+      );
+      const nextQuestion = questionExecution.output.intent;
       await client.query(
         `
           INSERT INTO chat_messages (
             id, conversation_id, user_id, role, content, message_kind,
-            provider, model, collection_intent
+            provider, model, collection_intent, skill_runs
           )
           VALUES ($1, $2, $3, 'assistant', $4, 'proactive-question',
-                  'system', 'creator-dna-question-bank-v1', $5::jsonb)
+                  'system', 'creator-dna-question-bank-v1', $5::jsonb, $6::jsonb)
         `,
-        [randomUUID(), conversationId, userId, nextQuestion.question, JSON.stringify(nextQuestion)],
+        [
+          randomUUID(),
+          conversationId,
+          userId,
+          nextQuestion.question,
+          JSON.stringify(nextQuestion),
+          JSON.stringify([questionExecution.run]),
+        ],
       );
       await client.query(
         `UPDATE ai_user_preferences
@@ -292,9 +405,9 @@ function mapSignal(row: SignalRow): CreatorDnaLearningSignalDto {
 async function getMessages(conversationId: string) {
   const messageResult = await database.query<MessageRow>(
     `
-      SELECT id, role, content, provider, model, collection_intent, created_at
+      SELECT id, role, content, provider, model, collection_intent, skill_runs, created_at
       FROM (
-        SELECT id, role, content, provider, model, collection_intent, created_at
+        SELECT id, role, content, provider, model, collection_intent, skill_runs, created_at
         FROM chat_messages
         WHERE conversation_id = $1
         ORDER BY created_at DESC
@@ -334,6 +447,7 @@ async function getMessages(conversationId: string) {
       model: row.model,
       provider: row.provider,
       role: row.role,
+      skillRuns: parseAgentSkillRuns(row.skill_runs),
     }),
   );
 }
@@ -445,6 +559,9 @@ function buildSystemPrompt(
   const questionBank = proactiveQuestions
     .map(({ promptId, question }) => `${promptId}: ${question}`)
     .join("\n");
+  const directionSkills = getAgentSkillCatalog().filter(({ name }) =>
+    name.startsWith("direction."),
+  );
 
   return `Bạn là emsen buddy, trợ lý sáng tạo thân thiện cho creator Việt Nam.
 
@@ -457,11 +574,20 @@ Mục tiêu:
 - Nếu người dùng đang trả lời một câu hỏi thu thập Creator DNA, trích tối đa 3 tín hiệu rõ ràng. Không suy đoán giới tính, tuổi, sức khỏe, tài chính, tôn giáo hay đặc điểm nhạy cảm.
 - Nếu không có activeCollectionIntent, extractedSignals phải là mảng rỗng.
 - reply không được lặp lại câu hỏi đã chọn; server sẽ tự nối câu hỏi theo ID.
+- Dùng direction.get_current khi người dùng muốn xem, nghe giải thích hoặc tóm tắt định hướng hiện tại.
+- Dùng direction.generate_draft khi người dùng muốn tạo một định hướng mới.
+- Dùng direction.update_draft khi người dùng muốn đổi toàn bộ hoặc chỉnh riêng định vị, giọng điệu, khán giả hay trụ cột.
+- Chỉ dùng skill ghi khi người dùng yêu cầu hành động trực tiếp. Nếu họ chỉ hỏi giả định, xin lời khuyên hoặc hỏi "có nên", hãy trả lời tư vấn và dùng none.
+- Skill tạo/chỉnh Định hướng chỉ tạo bản nháp; tuyệt đối không nói rằng đã chốt hoặc phê duyệt thay người dùng.
+- Nếu người dùng yêu cầu chốt/phê duyệt Định hướng, không gọi skill ghi; giải thích rằng họ cần xem lại và chốt trong màn hình Định hướng.
+- Khi chọn một skill Định hướng, đặt nextQuestionId là "none" để tập trung hoàn thành yêu cầu chính.
+- Nếu không cần thao tác Định hướng, skillCall.name phải là "none".
 
 Trang người dùng đang xem: ${currentPage}
 Creator DNA có cấu trúc: ${JSON.stringify(profileContext(profile))}
 Tín hiệu đã xác nhận gần đây: ${JSON.stringify(learnedSignals.slice(0, 20).map(({ category, summary }) => ({ category, summary })))}
 activeCollectionIntent: ${JSON.stringify(activeIntent)}
+Các skill Định hướng được phép dùng: ${JSON.stringify(directionSkills)}
 
 Ngân hàng câu hỏi:
 ${questionBank}`;
@@ -504,6 +630,12 @@ function fallbackChatOutput(
     extractedSignals: activeIntent ? fallbackSignal(content, activeIntent) : [],
     nextQuestionId: getNextProactiveQuestion(promptCursor).promptId,
     reply,
+    skillCall: resolveDirectionSkillCall(content, {
+      goal: "",
+      instruction: "",
+      name: "none",
+      section: "all",
+    }),
   };
 }
 
@@ -552,6 +684,7 @@ async function generateChatOutput(
       output = {
         ...result.output,
         extractedSignals: activeIntent ? result.output.extractedSignals : [],
+        skillCall: resolveDirectionSkillCall(input.content, result.output.skillCall),
       };
       responseProvider = result.provider;
       model = result.model;
@@ -562,7 +695,49 @@ async function generateChatOutput(
     console.warn(`[ai] chat used fallback: ${errorMessage}`);
   }
 
+  if (output.skillCall.name !== "none") {
+    output.nextQuestionId = "none";
+    // A product command is not an answer to a pending Creator DNA question.
+    output.extractedSignals = [];
+  }
+  if (preferences.proactive_frequency === "off") {
+    output.nextQuestionId = "none";
+  }
+
   return { errorMessage, model, output, provider: responseProvider, status };
+}
+
+async function executeDirectionChatSkill(
+  userId: string,
+  call: DirectionChatSkillCall,
+): Promise<AgentSkillExecution<DirectionSkillOutput> | null> {
+  if (call.name === "none") {
+    return null;
+  }
+  if (call.name === "direction.get_current") {
+    return agentSkillRegistry.execute<GetCurrentDirectionInput, DirectionSkillOutput>(
+      call.name,
+      { userId },
+      {},
+    );
+  }
+  const input: DirectionDraftSkillInput = {
+    goal: call.goal,
+    instruction: call.instruction,
+    section: call.section,
+  };
+  return agentSkillRegistry.execute<DirectionDraftSkillInput, DirectionSkillOutput>(
+    call.name,
+    { userId },
+    input,
+  );
+}
+
+function directionSkillFailureReply(error: unknown) {
+  if (error instanceof HttpError) {
+    return `Mình chưa thể thực hiện thay đổi này: ${error.message}`;
+  }
+  return "Mình chưa thể thao tác với Định hướng lúc này. Bản hiện tại vẫn được giữ nguyên; bạn hãy thử lại sau nhé.";
 }
 
 export async function sendChatMessage(
@@ -578,7 +753,7 @@ export async function sendChatMessage(
         id, conversation_id, user_id, role, content, reply_to_message_id
       )
       VALUES ($1, $2, $3, 'user', $4, $5)
-      RETURNING id, role, content, provider, model, collection_intent, created_at
+      RETURNING id, role, content, provider, model, collection_intent, skill_runs, created_at
     `,
     [userMessageId, conversationId, userId, input.content, activeQuestion?.id ?? null],
   );
@@ -590,11 +765,27 @@ export async function sendChatMessage(
     input,
     activeQuestion?.intent ?? null,
   );
-  const nextQuestion = getProactiveQuestion(generated.output.nextQuestionId);
-  const assistantContent = nextQuestion
-    ? `${generated.output.reply.trim()}\n\n${nextQuestion.question}`
-    : generated.output.reply.trim();
+  const directionExecution = await executeDirectionChatSkill(
+    userId,
+    generated.output.skillCall,
+  );
+  const questionExecution =
+    !directionExecution && generated.output.nextQuestionId !== "none"
+      ? await selectProactiveQuestion(userId, 0, generated.output.nextQuestionId)
+      : null;
+  const nextQuestion = questionExecution?.output.intent ?? null;
+  const assistantContent = directionExecution
+    ? directionExecution.ok
+      ? directionExecution.output.reply
+      : directionSkillFailureReply(directionExecution.error)
+    : nextQuestion
+      ? `${generated.output.reply.trim()}\n\n${nextQuestion.question}`
+      : generated.output.reply.trim();
   const assistantMessageId = randomUUID();
+  const skillRuns: AgentSkillRunDto[] = [
+    ...(directionExecution ? [directionExecution.run] : []),
+    ...(questionExecution ? [questionExecution.run] : []),
+  ];
   const client = await database.connect();
 
   try {
@@ -603,9 +794,9 @@ export async function sendChatMessage(
       `
         INSERT INTO chat_messages (
           id, conversation_id, user_id, role, content, provider, model,
-          collection_intent, status, error_message
+          collection_intent, status, error_message, skill_runs
         )
-        VALUES ($1, $2, $3, 'assistant', $4, $5, $6, $7::jsonb, $8, $9)
+        VALUES ($1, $2, $3, 'assistant', $4, $5, $6, $7::jsonb, $8, $9, $10::jsonb)
       `,
       [
         assistantMessageId,
@@ -617,27 +808,31 @@ export async function sendChatMessage(
         nextQuestion ? JSON.stringify(nextQuestion) : null,
         generated.status,
         generated.errorMessage,
+        JSON.stringify(skillRuns),
       ],
     );
 
-    for (const signal of generated.output.extractedSignals) {
-      await client.query(
-        `
-          INSERT INTO creator_dna_signals (
-            id, user_id, source, category, confidence, evidence, summary,
-            origin_message_id
-          )
-          VALUES ($1, $2, 'ai-chat', $3, $4, $5, $6, $7)
-        `,
-        [
-          randomUUID(),
+    if (generated.output.extractedSignals.length > 0) {
+      const captureExecution = await agentSkillRegistry.execute<
+        CaptureChatSignalsInput,
+        CaptureChatSignalsOutput
+      >(
+        "creator_dna.capture_chat_signals",
+        {
+          conversationId,
+          originMessageId: assistantMessageId,
+          queryable: client,
           userId,
-          signal.category,
-          signal.confidence,
-          signal.evidence.slice(0, 4_000),
-          signal.summary.slice(0, 1_000),
-          assistantMessageId,
-        ],
+        },
+        { signals: generated.output.extractedSignals },
+      );
+      skillRuns.push(captureExecution.run);
+      if (!captureExecution.ok) {
+        throw captureExecution.error;
+      }
+      await client.query(
+        "UPDATE chat_messages SET skill_runs = $2::jsonb WHERE id = $1",
+        [assistantMessageId, JSON.stringify(skillRuns)],
       );
     }
 
@@ -645,10 +840,11 @@ export async function sendChatMessage(
       `UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1`,
       [conversationId],
     );
-    if (generated.output.extractedSignals.length > 0) {
+    if (nextQuestion) {
       await client.query(
-        `UPDATE creator_dna_profiles
-         SET last_captured_at = NOW(), updated_at = NOW()
+        `UPDATE ai_user_preferences
+         SET proactive_prompt_cursor = proactive_prompt_cursor + 1,
+             updated_at = NOW()
          WHERE user_id = $1`,
         [userId],
       );
@@ -674,6 +870,7 @@ export async function sendChatMessage(
       model: null,
       provider: null,
       role: "user",
+      skillRuns: [],
     },
   };
 }

@@ -136,6 +136,27 @@ export type ChatCollectionIntentDto = {
   question: string;
 };
 
+export type AgentSkillName =
+  | "creator_dna.ask_proactive_question"
+  | "creator_dna.capture_chat_signals"
+  | "direction.get_current"
+  | "direction.generate_draft"
+  | "direction.update_draft";
+
+export type AgentSkillMode = "read" | "draft-write" | "write";
+
+export type AgentSkillRunDto = {
+  executedAt: string;
+  id: string;
+  mode: AgentSkillMode;
+  name: AgentSkillName;
+  status: "failed" | "succeeded";
+  summary: string;
+  target: "creator-dna" | "direction" | null;
+  targetId: string | null;
+  targetVersion: number | null;
+};
+
 export type ChatMessageDto = {
   collectionIntent: ChatCollectionIntentDto | null;
   content: string;
@@ -145,6 +166,7 @@ export type ChatMessageDto = {
   model: string | null;
   provider: "google-gemini" | "fallback" | "system" | null;
   role: "assistant" | "user";
+  skillRuns: AgentSkillRunDto[];
 };
 
 export type ChatStateDto = {

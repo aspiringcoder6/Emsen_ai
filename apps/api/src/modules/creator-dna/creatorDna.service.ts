@@ -8,6 +8,7 @@ import type {
   CreatorDnaStateDto,
   SaveCreatorDnaOnboardingRequestDto,
 } from "@creator-flow/contracts";
+import type { PoolClient } from "pg";
 import { database } from "../../database/pool.js";
 import { HttpError } from "../../shared/http.js";
 import { evaluateAndStoreUser } from "../ai/userEvaluation.service.js";
@@ -36,6 +37,13 @@ type CreatorDnaSignalRow = {
   source: CreatorDnaLearningSignalDto["source"];
   summary: string;
 };
+
+type Queryable = Pick<PoolClient, "query">;
+
+type CreatorDnaChatSignal = Pick<
+  CreateCreatorDnaSignalRequestDto,
+  "category" | "confidence" | "evidence" | "summary"
+>;
 
 function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
@@ -204,6 +212,53 @@ export async function createCreatorDnaSignal(
   }
 
   return getCreatorDnaState(userId);
+}
+
+export async function captureCreatorDnaChatSignals(
+  userId: string,
+  originMessageId: string,
+  signals: CreatorDnaChatSignal[],
+  queryable: Queryable = database,
+) {
+  const origin = await queryable.query(
+    "SELECT 1 FROM chat_messages WHERE id = $1 AND user_id = $2",
+    [originMessageId, userId],
+  );
+  if (origin.rowCount !== 1) {
+    throw new HttpError(
+      404,
+      "CHAT_MESSAGE_NOT_FOUND",
+      "Không tìm thấy tin nhắn nguồn thuộc tài khoản này.",
+    );
+  }
+  const signalIds = signals.map(() => randomUUID());
+  for (const [index, signal] of signals.entries()) {
+    await queryable.query(
+      `
+        INSERT INTO creator_dna_signals (
+          id, user_id, source, category, confidence, evidence, summary,
+          origin_message_id
+        )
+        VALUES ($1, $2, 'ai-chat', $3, $4, $5, $6, $7)
+      `,
+      [
+        signalIds[index],
+        userId,
+        signal.category,
+        signal.confidence,
+        signal.evidence,
+        signal.summary,
+        originMessageId,
+      ],
+    );
+  }
+  await queryable.query(
+    `UPDATE creator_dna_profiles
+     SET last_captured_at = NOW(), updated_at = NOW()
+     WHERE user_id = $1`,
+    [userId],
+  );
+  return signalIds;
 }
 
 export async function removeCreatorDnaSignal(userId: string, signalId: string) {

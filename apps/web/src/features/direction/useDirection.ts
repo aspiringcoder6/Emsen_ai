@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { DirectionBriefDto, DirectionContentDto, DirectionSection, DirectionStateDto, DirectionVersionDto } from "@creator-flow/contracts";
+import { directionUpdatedEvent } from "../chat/chatConfig";
 import { generateDirection, getDirection, saveDirection } from "./directionApi";
 
 const emptyContent: DirectionContentDto = {
@@ -41,6 +42,18 @@ export function useDirection(active: boolean) {
     if (active && !busyRef.current) void load(dirtyRef.current);
     // Retain edits while navigating between workspace tabs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+  useEffect(() => {
+    const reloadAfterAgentChange = () => {
+      if (dirtyRef.current) {
+        setNotice("Emsen vừa tạo một bản nháp Định hướng mới qua chat. Các chỉnh sửa chưa lưu của bạn vẫn được giữ; hãy bấm tải lại khi sẵn sàng xem bản mới.");
+        return;
+      }
+      if (active && !busyRef.current) void load();
+    };
+    window.addEventListener(directionUpdatedEvent, reloadAfterAgentChange);
+    return () => window.removeEventListener(directionUpdatedEvent, reloadAfterAgentChange);
+    // `load` intentionally follows the current render; the event listener is refreshed with it.
   }, [active]);
   useEffect(() => {
     if (!dirty) return;

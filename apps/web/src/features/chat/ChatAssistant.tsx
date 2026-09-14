@@ -15,6 +15,7 @@ import { getChat, sendChatMessage } from "./chatApi";
 import {
   chatDraftStorageKey,
   creatorDnaUpdatedEvent,
+  directionUpdatedEvent,
   formatChatMessageTime,
 } from "./chatConfig";
 
@@ -30,7 +31,14 @@ const quickPrompts = [
   "Mình đang có một ý tưởng mới",
   "Giúp mình phát triển một concept",
   "Mình cần hỗ trợ viết kịch bản",
+  "Cho mình xem định hướng hiện tại",
 ];
+
+const directionSkillLabels = {
+  "direction.generate_draft": "Đã tạo bản nháp Định hướng",
+  "direction.get_current": "Đã đọc Định hướng",
+  "direction.update_draft": "Đã cập nhật bản nháp Định hướng",
+} as const;
 
 function AssistantMessage({ message }: { message: ChatMessageDto }) {
   return (
@@ -63,6 +71,30 @@ function AssistantMessage({ message }: { message: ChatMessageDto }) {
             </div>
           </div>
         ) : null}
+        {message.skillRuns
+          .filter((run) => run.name.startsWith("direction."))
+          .map((run) => (
+            <div
+              className={`mt-3 flex items-start gap-2 rounded-2xl border px-3 py-2.5 ${
+                run.status === "succeeded"
+                  ? "border-[#DCE9D7] bg-[#F6FAF4] text-[#4C7752]"
+                  : "border-[#F0D8C8] bg-[#FFF7F1] text-[#9A6243]"
+              }`}
+              key={run.id}
+            >
+              <Sparkles className="mt-0.5 shrink-0" size={13} />
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold">
+                  {run.status === "succeeded"
+                    ? directionSkillLabels[
+                        run.name as keyof typeof directionSkillLabels
+                      ]
+                    : "Chưa thể thao tác với Định hướng"}
+                </p>
+                <p className="mt-0.5 text-[10px] leading-4 opacity-80">{run.summary}</p>
+              </div>
+            </div>
+          ))}
         <p className="mt-1.5 text-[10px] text-[#91A38F]">
           {formatChatMessageTime(message.createdAt)}
         </p>
@@ -171,6 +203,7 @@ export function ChatAssistant({
       model: null,
       provider: null,
       role: "user",
+      skillRuns: [],
     };
     setChat((current) =>
       current
@@ -182,6 +215,16 @@ export function ChatAssistant({
       const result = await sendChatMessage(trimmedContent, currentPage);
       if (result.assistantMessage.learnedSignals.length > 0) {
         window.dispatchEvent(new CustomEvent(creatorDnaUpdatedEvent));
+      }
+      if (
+        result.assistantMessage.skillRuns.some(
+          (run) =>
+            run.status === "succeeded" &&
+            (run.name === "direction.generate_draft" ||
+              run.name === "direction.update_draft"),
+        )
+      ) {
+        window.dispatchEvent(new CustomEvent(directionUpdatedEvent));
       }
       setChat((current) =>
         current
