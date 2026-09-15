@@ -32,6 +32,7 @@ function updateRequest(script: ScriptDocumentDto): UpdateScriptRequestDto {
     revision: script.revision,
     title: script.title,
     status: script.status,
+    creativeStrategy: script.creativeStrategy,
     content: script.content,
     settings: script.settings,
     advancedSettings: script.advancedSettings,

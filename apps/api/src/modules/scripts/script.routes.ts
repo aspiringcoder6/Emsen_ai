@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { requireAuth } from "../auth/session.js";
 import { HttpError } from "../../shared/http.js";
-import { parseCreateScript, parseScriptAssist, parseUpdateScript } from "./script.schema.js";
-import { assistScript, createScript, deleteScript, getScript, getScriptWorkspace, updateScript } from "./script.service.js";
+import { parseCreateScript, parseScriptAssist, parseScriptBrainstorm, parseUpdateScript } from "./script.schema.js";
+import { assistScript, brainstormScript, createScript, deleteScript, getScript, getScriptWorkspace, updateScript } from "./script.service.js";
 
 export const scriptRouter = Router();
 scriptRouter.use(requireAuth);
@@ -20,6 +20,10 @@ scriptRouter.get("/", async (request, response) => {
 
 scriptRouter.post("/", async (request, response) => {
   response.status(201).json(await createScript(request.auth!.userId, parseCreateScript(request.body)));
+});
+
+scriptRouter.post("/brainstorm", async (request, response) => {
+  response.json(await brainstormScript(request.auth!.userId, parseScriptBrainstorm(request.body)));
 });
 
 scriptRouter.get("/:scriptId", async (request, response) => {

@@ -1,13 +1,28 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ContentPlanVersionDto, ScriptDocumentDto, UpdateScriptRequestDto } from "@creator-flow/contracts";
-import { parseCreateScript, parseScriptAssist, parseUpdateScript } from "../src/modules/scripts/script.schema.js";
+import { parseCreateScript, parseScriptAssist, parseScriptBrainstorm, parseStoryboard, parseUpdateScript } from "../src/modules/scripts/script.schema.js";
 import { synchronizeScriptWithPlan } from "../src/modules/scripts/scriptPlanSync.js";
 
 const validDraft: UpdateScriptRequestDto = {
   revision: 1,
   title: "Một ngày bắt đầu lại",
   status: "in-progress",
+  creativeStrategy: {
+    selectedConcept: {
+      id: "concept-1",
+      angleType: "experience",
+      label: "Trải nghiệm thật",
+      angle: "Bắt đầu lại từ một việc nhỏ",
+      hook: "Bạn không cần đợi đến thứ Hai.",
+      tension: "Muốn bắt đầu hoàn hảo nhưng càng chờ càng trì hoãn.",
+      development: "Kể một lần đã trì hoãn rồi rút ra bước nhỏ có thể làm ngay.",
+      creatorPrompt: "Lần gần nhất bạn trì hoãn vì muốn hoàn hảo là khi nào?",
+      whyItFits: "Phù hợp với giọng kể gần gũi.",
+      fitScore: 92,
+    },
+    creatorExperience: "Tôi từng đợi đầu tuần mới bắt đầu rồi lại bỏ lỡ.",
+  },
   content: {
     hook: "Bạn không cần đợi đến thứ Hai.",
     body: "Bắt đầu bằng một việc nhỏ có thể làm ngay hôm nay.",
@@ -17,7 +32,12 @@ const validDraft: UpdateScriptRequestDto = {
         id: "frame-1",
         title: "Mở cảnh",
         visual: "Cận cảnh bàn làm việc",
+        visualPurpose: "Tạo cảm giác mọi thứ đang bị trì hoãn.",
+        broll: "Lịch bị gạch nhiều ngày",
         dialogue: "Bạn không cần đợi đến thứ Hai.",
+        emotionalBeat: "Nhận ra",
+        transition: "Cắt theo động tác mở sổ",
+        retentionRole: "Mở câu hỏi cần lời giải",
         direction: "Máy quay cố định",
         durationSeconds: 4,
       },
@@ -43,24 +63,48 @@ const validDraft: UpdateScriptRequestDto = {
 };
 
 test("validates manual and scheduled script creation", () => {
-  assert.equal(parseCreateScript({
+  const manual = parseCreateScript({
     mode: "manual", title: "Kịch bản mới", brief: "", scheduledFor: null,
     platform: "TikTok", format: "Video ngắn",
-  }).title, "Kịch bản mới");
+  });
+  assert.equal(manual.title, "Kịch bản mới");
+  assert.equal(manual.targetDurationSeconds, 60);
 
   const scheduled = parseCreateScript({
     mode: "ai", title: "", brief: "Viết gần gũi", scheduledFor: "2026-09-12",
-    platform: "Instagram", format: "Reel",
+    platform: "Instagram", format: "Reel", targetDurationSeconds: 30,
+    creatorExperience: "Tôi từng xóa video đầu tiên.", ctaStyle: "Mở hội thoại",
+    selectedConcept: validDraft.creativeStrategy.selectedConcept,
     contentPlanId: "9df5a911-92c4-4a71-b218-881cd73d59a2", contentPlanItemId: "item-3", dayIndex: 3,
   });
   assert.equal(scheduled.contentPlanItemId, "item-3");
   assert.equal(scheduled.dayIndex, 3);
+  assert.equal(scheduled.targetDurationSeconds, 30);
+  assert.equal(scheduled.selectedConcept?.angleType, "experience");
 
   for (const input of [
     { mode: "manual", title: "", brief: "", scheduledFor: null, platform: "", format: "" },
     { mode: "manual", title: "Kịch bản", brief: "", scheduledFor: "2026-02-30", platform: "", format: "" },
     { mode: "ai", title: "", brief: "", scheduledFor: null, platform: "", format: "", contentPlanVersionId: "bad", dayIndex: 7 },
   ]) assert.throws(() => parseCreateScript(input));
+});
+
+test("validates creative brainstorming inputs", () => {
+  const input = parseScriptBrainstorm({
+    title: "Video đầu tiên",
+    brief: "Gần gũi",
+    scheduledFor: null,
+    platform: "TikTok",
+    format: "Video ngắn",
+    targetDurationSeconds: 45,
+    creatorExperience: "Tôi đã quay đi quay lại nhiều lần.",
+    ctaStyle: "Mở hội thoại",
+    optionCount: 6,
+  });
+  assert.equal(input.optionCount, 6);
+  assert.equal(input.targetDurationSeconds, 45);
+  assert.equal("mode" in input, false);
+  assert.throws(() => parseScriptBrainstorm({ ...input, optionCount: 3 }));
 });
 
 test("syncs untouched plan fields and preserves script edits", () => {
@@ -79,6 +123,7 @@ test("syncs untouched plan fields and preserves script edits", () => {
       sourceSnapshot, sync: { state: "current", syncedAt: "2026-09-01T00:00:00.000Z", appliedFields: [], preservedFields: [] },
     },
     content: { hook: sourceSnapshot.hook, body: "Phần tôi đã tự sửa", cta: sourceSnapshot.cta, storyboard: [] },
+    creativeStrategy: { selectedConcept: null, creatorExperience: "" },
     settings: { platform: sourceSnapshot.platform, format: sourceSnapshot.format, scheduledFor: sourceSnapshot.scheduledFor, targetDurationSeconds: 60, aspectRatio: "9:16", objective: sourceSnapshot.objective, audience: "", tone: "" },
     advancedSettings: { hookStyle: "", pacing: "balanced", ctaStyle: "", language: "Tiếng Việt", productionNotes: sourceSnapshot.productionNotes },
   } as ScriptDocumentDto;
@@ -105,6 +150,16 @@ test("syncs untouched plan fields and preserves script edits", () => {
 test("validates the editable script and AI section request", () => {
   assert.deepEqual(parseUpdateScript(validDraft), validDraft);
   assert.equal(parseScriptAssist({ section: "hook", instruction: "Ngắn hơn", draft: validDraft }).section, "hook");
+  const legacyFrame = parseStoryboard([{
+    id: "legacy-frame",
+    title: "Cảnh cũ",
+    visual: "Cận cảnh",
+    dialogue: "Lời thoại cũ",
+    direction: "Máy cố định",
+    durationSeconds: 4,
+  }])[0]!;
+  assert.equal(legacyFrame.visualPurpose, "");
+  assert.equal(legacyFrame.retentionRole, "");
 
   assert.throws(() => parseUpdateScript({ ...validDraft, status: "published" }));
   assert.throws(() => parseUpdateScript({ ...validDraft, settings: { ...validDraft.settings, targetDurationSeconds: 0 } }));

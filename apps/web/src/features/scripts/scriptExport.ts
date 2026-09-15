@@ -29,13 +29,27 @@ export function scriptAsText(script: ScriptDocumentDto) {
     ? script.content.storyboard.map((frame, index) => [
       `CẢNH ${index + 1}: ${frame.title.trim() || `Keyframe ${index + 1}`} (${frame.durationSeconds} giây)`,
       `Hình ảnh: ${textOrPlaceholder(frame.visual)}`,
+      frame.visualPurpose.trim() ? `Mục đích cảnh: ${frame.visualPurpose.trim()}` : "",
+      frame.broll.trim() ? `B-roll: ${frame.broll.trim()}` : "",
       `Lời thoại: ${textOrPlaceholder(frame.dialogue)}`,
+      frame.emotionalBeat.trim() ? `Nhịp cảm xúc: ${frame.emotionalBeat.trim()}` : "",
+      frame.transition.trim() ? `Chuyển cảnh: ${frame.transition.trim()}` : "",
+      frame.retentionRole.trim() ? `Vai trò giữ chân: ${frame.retentionRole.trim()}` : "",
       frame.direction.trim() ? `Chỉ dẫn: ${frame.direction.trim()}` : "",
     ].filter(Boolean).join("\n")).join("\n\n")
     : "(Chưa có cảnh)";
 
   const optionalDetails = [
     script.planReference?.planName ? `Kế hoạch nội dung: ${script.planReference.planName}` : "",
+    script.creativeStrategy.selectedConcept?.label
+      ? `Góc triển khai: ${script.creativeStrategy.selectedConcept.label}`
+      : "",
+    script.creativeStrategy.selectedConcept?.tension
+      ? `Điểm căng: ${script.creativeStrategy.selectedConcept.tension}`
+      : "",
+    script.creativeStrategy.creatorExperience.trim()
+      ? `Chất liệu thật: ${script.creativeStrategy.creatorExperience.trim()}`
+      : "",
     script.settings.objective.trim() ? `Mục tiêu: ${script.settings.objective.trim()}` : "",
     script.settings.audience.trim() ? `Khán giả: ${script.settings.audience.trim()}` : "",
     script.settings.tone.trim() ? `Giọng điệu: ${script.settings.tone.trim()}` : "",

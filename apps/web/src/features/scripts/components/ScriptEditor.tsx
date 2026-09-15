@@ -28,6 +28,7 @@ import {
 import { EmsenAvatar } from "../../../components/branding/EmsenAvatar";
 import { downloadScript, scriptAsText } from "../scriptExport";
 import { formatScriptDate, scriptStatusConfig, scriptStatuses, scriptSyncFieldLabels } from "../scriptConfig";
+import { countScriptWords, recommendedScriptWords, scriptDurationPresets } from "../scriptDuration";
 
 const inputClass = "mt-2 w-full rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2.5 text-sm font-normal leading-6 text-[#31583A] outline-none transition focus:border-[#72B65D] focus:ring-2 focus:ring-[#DDEED6]";
 
@@ -47,11 +48,27 @@ function AiPrompt({
   onSettings: () => void;
 }) {
   const [prompt, setPrompt] = useState("");
-  const examples: Record<ScriptAssistSection, string> = {
-    hook: "Ngắn hơn và tạo tò mò ngay trong 3 giây đầu",
-    body: "Thêm ví dụ gần gũi, giữ lời thoại tự nhiên",
-    cta: "Mềm hơn, khuyến khích người xem chia sẻ trải nghiệm",
-    storyboard: "Chia thành 5 cảnh dễ quay bằng điện thoại",
+  const suggestions: Record<ScriptAssistSection, string[]> = {
+    hook: [
+      "Tăng điểm căng và chi tiết thật",
+      "Cho tôi quan điểm mạnh hơn",
+      "Viết lại đúng giọng của tôi",
+    ],
+    body: [
+      "Sắp xếp theo trải nghiệm → mâu thuẫn → bài học",
+      "Chỉ ra và sửa những đoạn còn chung chung",
+      "Làm lời thoại tự nhiên hơn",
+    ],
+    cta: [
+      "Mở một cuộc trò chuyện ở bình luận",
+      "Tạo CTA để người xem muốn lưu lại",
+      "Dẫn tự nhiên sang phần tiếp theo",
+    ],
+    storyboard: [
+      "Mỗi cảnh cần mục đích thị giác rõ",
+      "Thêm B-roll và chuyển cảnh giữ chân",
+      "Đơn giản hóa để quay bằng điện thoại",
+    ],
   };
 
   return (
@@ -60,25 +77,30 @@ function AiPrompt({
         <EmsenAvatar activity="idea" className="h-11 w-11 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1.5 text-xs font-bold text-[#3F8240]"><Bot size={14} /> Chỉnh cùng Emsen</p>
-          <p className="mt-0.5 truncate text-[11px] text-[#748A74]">{examples[section]}</p>
+          <p className="mt-0.5 truncate text-[11px] text-[#748A74]">Chọn gợi ý nhanh hoặc nói theo cách của bạn.</p>
         </div>
         <button type="button" onClick={onClose} aria-label="Đóng trợ lý" className="rounded-lg p-1.5 text-[#748A74] hover:bg-white"><X size={15} /></button>
       </div>
 
       {enabled ? (
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            maxLength={3000}
-            rows={2}
-            placeholder="Bạn muốn chỉnh thế nào?"
-            className="min-w-0 flex-1 resize-none rounded-xl border border-[#D9E4D3] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#72B65D]"
-          />
-          <button type="button" disabled={busy || !prompt.trim()} onClick={() => onAsk(prompt)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#31583A] px-3.5 py-2.5 text-xs font-bold text-white disabled:opacity-40">
-            {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            {busy ? "Đang chỉnh" : "Gửi Emsen"}
-          </button>
+        <div className="mt-3">
+          <div className="flex flex-wrap gap-1.5">
+            {suggestions[section].map((suggestion) => <button key={suggestion} type="button" onClick={() => setPrompt(suggestion)} className="rounded-full border border-[#D6E5D1] bg-white px-2.5 py-1.5 text-[10px] font-bold text-[#557058] hover:border-[#8ABA7A]">{suggestion}</button>)}
+          </div>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              maxLength={3000}
+              rows={2}
+              placeholder="Bạn muốn chỉnh thế nào?"
+              className="min-w-0 flex-1 resize-none rounded-xl border border-[#D9E4D3] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#72B65D]"
+            />
+            <button type="button" disabled={busy || !prompt.trim()} onClick={() => onAsk(prompt)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#31583A] px-3.5 py-2.5 text-xs font-bold text-white disabled:opacity-40">
+              {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {busy ? "Đang chỉnh" : "Gửi Emsen"}
+            </button>
+          </div>
         </div>
       ) : (
         <button type="button" onClick={onSettings} className="mt-3 rounded-xl border border-[#C8DBC1] bg-white px-3 py-2 text-xs font-bold text-[#3F8240]">Kết nối AI để dùng</button>
@@ -201,6 +223,7 @@ export function ScriptEditor({
   const changeContent = (patch: Partial<ScriptDocumentDto["content"]>) => applyChange({ ...draft, content: { ...draft.content, ...patch } });
   const changeSettings = (patch: Partial<ScriptDocumentDto["settings"]>) => applyChange({ ...draft, settings: { ...draft.settings, ...patch } });
   const changeAdvanced = (patch: Partial<ScriptDocumentDto["advancedSettings"]>) => applyChange({ ...draft, advancedSettings: { ...draft.advancedSettings, ...patch } });
+  const changeStrategy = (patch: Partial<ScriptDocumentDto["creativeStrategy"]>) => applyChange({ ...draft, creativeStrategy: { ...draft.creativeStrategy, ...patch } });
   const updateFrame = (id: string, patch: Partial<ScriptStoryboardFrameDto>) => changeContent({ storyboard: draft.content.storyboard.map((frame) => frame.id === id ? { ...frame, ...patch } : frame) });
   const moveFrame = (index: number, direction: -1 | 1) => {
     const nextIndex = index + direction;
@@ -213,7 +236,12 @@ export function ScriptEditor({
     id: crypto.randomUUID(),
     title: `Keyframe ${String(draft.content.storyboard.length + 1).padStart(2, "0")}`,
     visual: "",
+    visualPurpose: "",
+    broll: "",
     dialogue: "",
+    emotionalBeat: "",
+    transition: "",
+    retentionRole: "",
     direction: "",
     durationSeconds: 5,
   }] });
@@ -239,7 +267,9 @@ export function ScriptEditor({
   const status = scriptStatusConfig[draft.status];
   const primarySections = [draft.content.hook, draft.content.body, draft.content.cta];
   const completedSections = primarySections.filter((value) => value.trim()).length;
-  const wordCount = primarySections.join(" ").trim().split(/\s+/).filter(Boolean).length;
+  const wordCount = countScriptWords(primarySections);
+  const wordRange = recommendedScriptWords(draft.settings.targetDurationSeconds);
+  const wordCountState = wordCount < wordRange.min ? "short" : wordCount > wordRange.max ? "long" : "balanced";
   const storyboardDuration = draft.content.storyboard.reduce((total, frame) => total + frame.durationSeconds, 0);
   const planSync = draft.planReference?.sync;
   const appliedSyncLabels = planSync?.appliedFields.map((field) => scriptSyncFieldLabels[field]) ?? [];
@@ -252,7 +282,7 @@ export function ScriptEditor({
           <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-xl border border-[#DDE8D6] bg-white px-3 py-2.5 text-xs font-bold"><ArrowLeft size={15} /> <span className="hidden sm:inline">Thư viện</span></button>
           <div className="min-w-[190px] flex-1">
             <input value={draft.title} maxLength={250} placeholder="Tên kịch bản" onChange={(event) => applyChange({ ...draft, title: event.target.value })} className="w-full bg-transparent text-base font-bold text-[#284D31] outline-none sm:text-xl" />
-            <p className="mt-0.5 truncate text-[11px] text-[#748A74]">{draft.settings.platform || "Chưa chọn nền tảng"} · {formatScriptDate(draft.settings.scheduledFor)} · {wordCount} từ</p>
+            <p className="mt-0.5 truncate text-[11px] text-[#748A74]">{draft.settings.platform || "Chưa chọn nền tảng"} · {formatScriptDate(draft.settings.scheduledFor)} · {wordCount} từ / gợi ý {wordRange.min}–{wordRange.max}</p>
           </div>
 
           <details className="relative">
@@ -281,6 +311,22 @@ export function ScriptEditor({
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_310px]">
         <div className="space-y-3">
+          {draft.creativeStrategy.selectedConcept && <section className="rounded-[22px] border border-[#E3D6E1] bg-gradient-to-r from-[#FBF4FA] to-white p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <span className="rounded-full bg-[#F0E2EE] px-2.5 py-1 text-[10px] font-bold text-[#825277]">Góc đã chọn · {draft.creativeStrategy.selectedConcept.label}</span>
+              <p className="min-w-0 flex-1 text-sm font-bold leading-6 text-[#3C4F3E]">“{draft.creativeStrategy.selectedConcept.hook}”</p>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-[#748A74]"><strong className="text-[#5D6F5D]">Điểm căng:</strong> {draft.creativeStrategy.selectedConcept.tension}</p>
+            <details className="mt-3 rounded-xl border border-[#E9E0E7] bg-white">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-[11px] font-bold text-[#72506B]">Chất liệu và hướng phát triển <ChevronDown size={14} /></summary>
+              <div className="space-y-3 border-t border-[#EFE8ED] p-3 text-xs leading-5 text-[#748A74]">
+                <p>{draft.creativeStrategy.selectedConcept.development}</p>
+                <p><strong className="text-[#557058]">Câu hỏi gợi mở:</strong> {draft.creativeStrategy.selectedConcept.creatorPrompt}</p>
+                <label className="block font-bold text-[#557058]">Trải nghiệm thật của bạn<textarea className={inputClass} rows={3} maxLength={4000} value={draft.creativeStrategy.creatorExperience} onChange={(event) => changeStrategy({ creatorExperience: event.target.value })} placeholder="Thêm chi tiết để Emsen chỉnh sát với bạn hơn…" /></label>
+              </div>
+            </details>
+          </section>}
+
           <section className="flex items-center gap-4 rounded-[22px] border border-[#D8E9D2] bg-[#F4FAF0] px-4 py-3">
             <EmsenAvatar activity={completedSections === 3 ? "checklist" : "writing"} className="h-14 w-14 shrink-0" />
             <div className="min-w-0 flex-1">
@@ -289,6 +335,7 @@ export function ScriptEditor({
                 <span className="shrink-0 text-xs font-bold text-[#3F8240]">{completedSections}/3</span>
               </div>
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#DCEAD6]"><span className="block h-full rounded-full bg-[#72B65D] transition-all" style={{ width: `${(completedSections / 3) * 100}%` }} /></div>
+              <p className={`mt-1.5 text-[10px] ${wordCountState === "balanced" ? "text-[#3F8240]" : "text-[#879487]"}`}>{wordCountState === "balanced" ? "Độ dài đang phù hợp với thời lượng." : wordCountState === "short" ? `Có thể phát triển thêm để đạt khoảng ${wordRange.min}–${wordRange.max} từ.` : `Có thể rút gọn để gần khoảng ${wordRange.min}–${wordRange.max} từ.`}</p>
             </div>
           </section>
 
@@ -333,6 +380,11 @@ export function ScriptEditor({
                       <div className="mt-3 grid gap-3 sm:grid-cols-2">
                         <label className="text-[11px] font-bold">Hình ảnh / hành động<textarea className={inputClass} rows={3} value={frame.visual} onChange={(event) => updateFrame(frame.id, { visual: event.target.value })} /></label>
                         <label className="text-[11px] font-bold">Lời thoại<textarea className={inputClass} rows={3} value={frame.dialogue} onChange={(event) => updateFrame(frame.id, { dialogue: event.target.value })} /></label>
+                        <label className="text-[11px] font-bold">Mục đích của cảnh<textarea className={inputClass} rows={2} value={frame.visualPurpose} onChange={(event) => updateFrame(frame.id, { visualPurpose: event.target.value })} placeholder="Cảnh này giúp người xem hiểu hoặc cảm thấy gì?" /></label>
+                        <label className="text-[11px] font-bold">Cảnh phụ / B-roll<textarea className={inputClass} rows={2} value={frame.broll} onChange={(event) => updateFrame(frame.id, { broll: event.target.value })} placeholder="Chi tiết tay, đồ vật, màn hình…" /></label>
+                        <label className="text-[11px] font-bold">Nhịp cảm xúc<input className={inputClass} value={frame.emotionalBeat} onChange={(event) => updateFrame(frame.id, { emotionalBeat: event.target.value })} placeholder="Tò mò, đồng cảm, bất ngờ…" /></label>
+                        <label className="text-[11px] font-bold">Chuyển cảnh<input className={inputClass} value={frame.transition} onChange={(event) => updateFrame(frame.id, { transition: event.target.value })} placeholder="Cắt thẳng, đổi góc, nối bằng hành động…" /></label>
+                        <label className="text-[11px] font-bold sm:col-span-2">Vai trò giữ chân<input className={inputClass} value={frame.retentionRole} onChange={(event) => updateFrame(frame.id, { retentionRole: event.target.value })} placeholder="Mở câu hỏi, đổi nhịp, hé lộ kết quả…" /></label>
                         <label className="text-[11px] font-bold">Chỉ dẫn quay<textarea className={inputClass} rows={2} value={frame.direction} onChange={(event) => updateFrame(frame.id, { direction: event.target.value })} /></label>
                         <label className="text-[11px] font-bold">Thời lượng (giây)<input type="number" min={0} max={600} className={inputClass} value={frame.durationSeconds} onChange={(event) => updateFrame(frame.id, { durationSeconds: Math.max(0, Number(event.target.value)) })} /></label>
                       </div>
@@ -357,10 +409,12 @@ export function ScriptEditor({
               <label className="block text-xs font-bold">Nền tảng<input className={inputClass} maxLength={80} value={draft.settings.platform} onChange={(event) => changeSettings({ platform: event.target.value })} /></label>
               <label className="block text-xs font-bold">Định dạng<input className={inputClass} maxLength={120} value={draft.settings.format} onChange={(event) => changeSettings({ format: event.target.value })} /></label>
               <label className="block text-xs font-bold">Ngày quay<input type="date" className={inputClass} value={draft.settings.scheduledFor ?? ""} onChange={(event) => changeSettings({ scheduledFor: event.target.value || null })} /></label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-xs font-bold">Thời lượng<input type="number" min={5} max={3600} className={inputClass} value={draft.settings.targetDurationSeconds} onChange={(event) => changeSettings({ targetDurationSeconds: Number(event.target.value) })} /></label>
-                <label className="text-xs font-bold">Tỷ lệ<select className={inputClass} value={draft.settings.aspectRatio} onChange={(event) => changeSettings({ aspectRatio: event.target.value as ScriptDocumentDto["settings"]["aspectRatio"] })}>{["9:16", "4:5", "1:1", "16:9"].map((ratio) => <option key={ratio}>{ratio}</option>)}</select></label>
+              <div>
+                <p className="text-xs font-bold">Thời lượng mục tiêu</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">{scriptDurationPresets.map((seconds) => <button key={seconds} type="button" onClick={() => changeSettings({ targetDurationSeconds: seconds })} className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${draft.settings.targetDurationSeconds === seconds ? "border-[#72B65D] bg-[#EAF6E4] text-[#31583A]" : "border-[#E5DED8] text-[#748A74]"}`}>{seconds}s</button>)}</div>
+                <label className="mt-2 flex items-center gap-2 text-[11px] text-[#748A74]"><input aria-label="Thời lượng mục tiêu tùy chỉnh" type="number" min={5} max={3600} className="w-24 rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2 text-sm text-[#31583A]" value={draft.settings.targetDurationSeconds} onChange={(event) => changeSettings({ targetDurationSeconds: Number(event.target.value) })} /> giây · {wordRange.min}–{wordRange.max} từ</label>
               </div>
+              <label className="block text-xs font-bold">Tỷ lệ khung hình<select className={inputClass} value={draft.settings.aspectRatio} onChange={(event) => changeSettings({ aspectRatio: event.target.value as ScriptDocumentDto["settings"]["aspectRatio"] })}>{["9:16", "4:5", "1:1", "16:9"].map((ratio) => <option key={ratio}>{ratio}</option>)}</select></label>
               <label className="block text-xs font-bold">Mục tiêu<textarea className={inputClass} rows={2} value={draft.settings.objective} onChange={(event) => changeSettings({ objective: event.target.value })} /></label>
             </div>
           </details>

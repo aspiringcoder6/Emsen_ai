@@ -2,6 +2,8 @@ import type {
   CreateScriptRequestDto,
   ScriptAssistRequestDto,
   ScriptAssistResponseDto,
+  ScriptBrainstormRequestDto,
+  ScriptBrainstormResponseDto,
   ScriptDocumentDto,
   ScriptWorkspaceDto,
   UpdateScriptRequestDto,
@@ -11,6 +13,8 @@ import { apiRequest } from "../../lib/apiClient";
 export const getScriptWorkspace = () => apiRequest<ScriptWorkspaceDto>("/scripts");
 export const createScript = (body: CreateScriptRequestDto) =>
   apiRequest<ScriptDocumentDto>("/scripts", { method: "POST", body });
+export const brainstormScript = (body: ScriptBrainstormRequestDto) =>
+  apiRequest<ScriptBrainstormResponseDto>("/scripts/brainstorm", { method: "POST", body });
 export const updateScript = (id: string, body: UpdateScriptRequestDto) =>
   apiRequest<ScriptDocumentDto>(`/scripts/${id}`, { method: "PUT", body });
 export const deleteScript = (id: string) =>

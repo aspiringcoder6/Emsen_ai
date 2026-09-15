@@ -3,7 +3,11 @@ import type {
   ScriptAdvancedSettingsDto,
   ScriptAssistRequestDto,
   ScriptAssistSection,
+  ScriptBrainstormRequestDto,
   ScriptContentDto,
+  ScriptCreativeConceptDto,
+  ScriptCreativeStrategyDto,
+  ScriptHookAngleType,
   ScriptSettingsDto,
   ScriptStatus,
   ScriptStoryboardFrameDto,
@@ -13,6 +17,16 @@ import { HttpError } from "../../shared/http.js";
 
 const statuses: ScriptStatus[] = ["draft", "in-progress", "ready", "completed", "archived"];
 const assistSections: ScriptAssistSection[] = ["hook", "body", "cta", "storyboard"];
+export const scriptHookAngleTypes: ScriptHookAngleType[] = [
+  "pain",
+  "curiosity",
+  "contrarian",
+  "story",
+  "confession",
+  "authority",
+  "data",
+  "experience",
+];
 
 const invalid = (message: string): never => {
   throw new HttpError(400, "INVALID_SCRIPT", message);
@@ -30,6 +44,10 @@ function text(value: unknown, label: string, max: number, required = false) {
     return invalid(`${label} cần hợp lệ và không quá ${max} ký tự.`);
   }
   return value.trim();
+}
+
+function optionalText(value: unknown, label: string, max: number) {
+  return value === undefined || value === null ? "" : text(value, label, max);
 }
 
 function date(value: unknown, label: string): string | null {
@@ -65,11 +83,49 @@ export function parseStoryboard(value: unknown): ScriptStoryboardFrameDto[] {
       id: text(row.id, "Mã keyframe", 100, true),
       title: text(row.title, "Tên keyframe", 120, true),
       visual: text(row.visual, "Mô tả hình ảnh", 2000),
+      visualPurpose: optionalText(row.visualPurpose, "Mục đích hình ảnh", 1000),
+      broll: optionalText(row.broll, "B-roll", 2000),
       dialogue: text(row.dialogue, "Lời thoại", 4000),
+      emotionalBeat: optionalText(row.emotionalBeat, "Cảm xúc cảnh", 1000),
+      transition: optionalText(row.transition, "Chuyển cảnh", 1000),
+      retentionRole: optionalText(row.retentionRole, "Vai trò giữ chân", 1000),
       direction: text(row.direction, "Chỉ dẫn", 2000),
       durationSeconds,
     };
   });
+}
+
+export function parseCreativeConcept(value: unknown): ScriptCreativeConceptDto {
+  const body = scriptObject(value);
+  if (!scriptHookAngleTypes.includes(body.angleType as ScriptHookAngleType)) {
+    return invalid("Góc triển khai kịch bản không hợp lệ.");
+  }
+  const fitScore = Number(body.fitScore);
+  if (!Number.isInteger(fitScore) || fitScore < 0 || fitScore > 100) {
+    return invalid("Mức độ phù hợp của góc triển khai không hợp lệ.");
+  }
+  return {
+    id: text(body.id, "Mã góc triển khai", 100, true),
+    angleType: body.angleType as ScriptHookAngleType,
+    label: text(body.label, "Tên góc triển khai", 80, true),
+    angle: text(body.angle, "Góc triển khai", 1000, true),
+    hook: text(body.hook, "Hook gợi ý", 1000, true),
+    tension: text(body.tension, "Mâu thuẫn sáng tạo", 1000, true),
+    development: text(body.development, "Hướng phát triển", 2000, true),
+    creatorPrompt: text(body.creatorPrompt, "Câu hỏi cho creator", 1000, true),
+    whyItFits: text(body.whyItFits, "Lý do phù hợp", 1000, true),
+    fitScore,
+  };
+}
+
+export function parseCreativeStrategy(value: unknown): ScriptCreativeStrategyDto {
+  const body = scriptObject(value);
+  return {
+    selectedConcept: body.selectedConcept === null || body.selectedConcept === undefined
+      ? null
+      : parseCreativeConcept(body.selectedConcept),
+    creatorExperience: optionalText(body.creatorExperience, "Trải nghiệm thật", 4000),
+  };
 }
 
 export function parseScriptContent(value: unknown): ScriptContentDto {
@@ -130,6 +186,12 @@ export function parseCreateScript(value: unknown): CreateScriptRequestDto {
     return invalid("Kế hoạch nội dung không hợp lệ.");
   }
   if (hasPlan && !hasPlanItem) return invalid("Hãy chọn một nội dung trong kế hoạch.");
+  const targetDurationSeconds = body.targetDurationSeconds === undefined
+    ? 60
+    : Number(body.targetDurationSeconds);
+  if (!Number.isInteger(targetDurationSeconds) || targetDurationSeconds < 5 || targetDurationSeconds > 3600) {
+    return invalid("Thời lượng mục tiêu cần từ 5 đến 3600 giây.");
+  }
   return {
     mode: body.mode,
     title: text(body.title, "Tên kịch bản", 250, !hasPlan),
@@ -137,6 +199,12 @@ export function parseCreateScript(value: unknown): CreateScriptRequestDto {
     scheduledFor: date(body.scheduledFor, "Ngày dự kiến"),
     platform: text(body.platform, "Nền tảng", 80),
     format: text(body.format, "Định dạng", 120),
+    targetDurationSeconds,
+    creatorExperience: optionalText(body.creatorExperience, "Trải nghiệm thật", 4000),
+    ctaStyle: optionalText(body.ctaStyle, "Kiểu CTA", 500),
+    ...(body.selectedConcept !== undefined && body.selectedConcept !== null
+      ? { selectedConcept: parseCreativeConcept(body.selectedConcept) }
+      : {}),
     ...(hasPlan ? {
       ...(body.contentPlanId !== undefined ? { contentPlanId: uuid(body.contentPlanId, "Kế hoạch nội dung") } : {}),
       ...(body.contentPlanVersionId !== undefined ? { contentPlanVersionId: uuid(body.contentPlanVersionId, "Phiên bản kế hoạch") } : {}),
@@ -145,6 +213,30 @@ export function parseCreateScript(value: unknown): CreateScriptRequestDto {
         : {}),
       ...(body.dayIndex !== undefined ? { dayIndex: body.dayIndex as number } : {}),
     } : {}),
+  };
+}
+
+export function parseScriptBrainstorm(value: unknown): ScriptBrainstormRequestDto {
+  const body = scriptObject(value);
+  const optionCount = body.optionCount === undefined ? 6 : Number(body.optionCount);
+  if (!Number.isInteger(optionCount) || optionCount < 5 || optionCount > 10) {
+    return invalid("Số góc gợi ý cần từ 5 đến 10.");
+  }
+  const parsed = parseCreateScript({ ...body, mode: "ai", selectedConcept: undefined });
+  return {
+    title: parsed.title,
+    brief: parsed.brief,
+    scheduledFor: parsed.scheduledFor,
+    platform: parsed.platform,
+    format: parsed.format,
+    targetDurationSeconds: parsed.targetDurationSeconds ?? 60,
+    creatorExperience: parsed.creatorExperience ?? "",
+    ctaStyle: parsed.ctaStyle ?? "",
+    ...(parsed.contentPlanId ? { contentPlanId: parsed.contentPlanId } : {}),
+    ...(parsed.contentPlanVersionId ? { contentPlanVersionId: parsed.contentPlanVersionId } : {}),
+    ...(parsed.contentPlanItemId ? { contentPlanItemId: parsed.contentPlanItemId } : {}),
+    ...(parsed.dayIndex !== undefined ? { dayIndex: parsed.dayIndex } : {}),
+    optionCount,
   };
 }
 
@@ -158,6 +250,7 @@ export function parseUpdateScript(value: unknown): UpdateScriptRequestDto {
     revision: body.revision as number,
     title: text(body.title, "Tên kịch bản", 250, true),
     status: body.status as ScriptStatus,
+    creativeStrategy: parseCreativeStrategy(body.creativeStrategy),
     content: parseScriptContent(body.content),
     settings: parseSettings(body.settings),
     advancedSettings: parseAdvancedSettings(body.advancedSettings),
@@ -191,15 +284,47 @@ export const generatedScriptResponseSchema = {
         properties: {
           title: { type: "string" },
           visual: { type: "string" },
+          visualPurpose: { type: "string" },
+          broll: { type: "string" },
           dialogue: { type: "string" },
+          emotionalBeat: { type: "string" },
+          transition: { type: "string" },
+          retentionRole: { type: "string" },
           direction: { type: "string" },
           durationSeconds: { type: "integer", minimum: 0, maximum: 600 },
         },
-        required: ["title", "visual", "dialogue", "direction", "durationSeconds"],
+        required: ["title", "visual", "visualPurpose", "broll", "dialogue", "emotionalBeat", "transition", "retentionRole", "direction", "durationSeconds"],
       },
     },
   },
   required: ["hook", "body", "cta", "storyboard"],
+};
+
+export const scriptBrainstormResponseSchema = {
+  type: "object",
+  properties: {
+    concepts: {
+      type: "array",
+      minItems: 5,
+      maxItems: 10,
+      items: {
+        type: "object",
+        properties: {
+          angleType: { type: "string", enum: scriptHookAngleTypes },
+          label: { type: "string" },
+          angle: { type: "string" },
+          hook: { type: "string" },
+          tension: { type: "string" },
+          development: { type: "string" },
+          creatorPrompt: { type: "string" },
+          whyItFits: { type: "string" },
+          fitScore: { type: "integer", minimum: 0, maximum: 100 },
+        },
+        required: ["angleType", "label", "angle", "hook", "tension", "development", "creatorPrompt", "whyItFits", "fitScore"],
+      },
+    },
+  },
+  required: ["concepts"],
 };
 
 export const textSuggestionResponseSchema = {

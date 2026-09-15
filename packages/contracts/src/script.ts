@@ -2,11 +2,44 @@ export type ScriptStatus = "draft" | "in-progress" | "ready" | "completed" | "ar
 export type ScriptSource = "manual" | "content-plan" | "ai";
 export type ScriptAssistSection = "hook" | "body" | "cta" | "storyboard";
 
+export type ScriptHookAngleType =
+  | "pain"
+  | "curiosity"
+  | "contrarian"
+  | "story"
+  | "confession"
+  | "authority"
+  | "data"
+  | "experience";
+
+export type ScriptCreativeConceptDto = {
+  id: string;
+  angleType: ScriptHookAngleType;
+  label: string;
+  angle: string;
+  hook: string;
+  tension: string;
+  development: string;
+  creatorPrompt: string;
+  whyItFits: string;
+  fitScore: number;
+};
+
+export type ScriptCreativeStrategyDto = {
+  selectedConcept: ScriptCreativeConceptDto | null;
+  creatorExperience: string;
+};
+
 export type ScriptStoryboardFrameDto = {
   id: string;
   title: string;
   visual: string;
+  visualPurpose: string;
+  broll: string;
   dialogue: string;
+  emotionalBeat: string;
+  transition: string;
+  retentionRole: string;
   direction: string;
   durationSeconds: number;
 };
@@ -91,6 +124,7 @@ export type ScriptDocumentDto = {
   createdAt: string;
   updatedAt: string;
   planReference: ScriptPlanReferenceDto | null;
+  creativeStrategy: ScriptCreativeStrategyDto;
   content: ScriptContentDto;
   settings: ScriptSettingsDto;
   advancedSettings: ScriptAdvancedSettingsDto;
@@ -129,6 +163,10 @@ export type CreateScriptRequestDto = {
   scheduledFor: string | null;
   platform: string;
   format: string;
+  targetDurationSeconds?: number;
+  creatorExperience?: string;
+  ctaStyle?: string;
+  selectedConcept?: ScriptCreativeConceptDto;
   contentPlanId?: string;
   contentPlanItemId?: string;
   /** @deprecated Kept for requests created before plans received a stable id. */
@@ -136,9 +174,28 @@ export type CreateScriptRequestDto = {
   dayIndex?: number;
 };
 
+export type ScriptBrainstormRequestDto = Omit<
+  CreateScriptRequestDto,
+  "mode" | "selectedConcept"
+> & {
+  optionCount?: number;
+};
+
+export type ScriptBrainstormResponseDto = {
+  concepts: ScriptCreativeConceptDto[];
+  recommendedId: string;
+  model: string;
+};
+
 export type UpdateScriptRequestDto = Pick<
   ScriptDocumentDto,
-  "revision" | "title" | "status" | "content" | "settings" | "advancedSettings"
+  | "revision"
+  | "title"
+  | "status"
+  | "creativeStrategy"
+  | "content"
+  | "settings"
+  | "advancedSettings"
 >;
 
 export type ScriptAssistRequestDto = {

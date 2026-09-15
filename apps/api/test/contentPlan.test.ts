@@ -9,6 +9,48 @@ const items: ContentPlanItemDto[] = Array.from({ length: 7 }, (_, dayIndex) => (
   id: `item-${dayIndex}`, dayIndex, pillarIndex: dayIndex % 3, objective: "Giá trị", platform: "TikTok", format: "Video ngắn",
   title: `Ý tưởng ${dayIndex + 1}`, angle: "Chia sẻ trải nghiệm nấu ăn tại nhà", hook: "Một bữa tối trong 15 phút?", cta: "Lưu lại để thử nhé", productionNotes: "Quay bằng điện thoại",
 }));
+const scriptConcepts = ["pain", "curiosity", "contrarian", "story", "confession", "experience"].map((angleType, index) => ({
+  angleType,
+  label: `Góc ${index + 1}`,
+  angle: `Cách kể khác biệt ${index + 1}`,
+  hook: `Hook cụ thể ${index + 1}`,
+  tension: `Mâu thuẫn rõ ràng ${index + 1}`,
+  development: `Phát triển từ trải nghiệm đến bài học ${index + 1}`,
+  creatorPrompt: `Chi tiết thật nào phù hợp với góc ${index + 1}?`,
+  whyItFits: "Phù hợp với Creator DNA đã lưu.",
+  fitScore: 80 + index,
+}));
+const generatedScript = {
+  hook: "Tôi đã quay 12 lần nhưng chưa đăng lần nào.",
+  body: "Tôi cứ chờ một phiên bản hoàn hảo. Mâu thuẫn là càng chờ, tôi càng không học được gì. Khi đăng bản chưa hoàn hảo đầu tiên, tôi nhận ra phản hồi thật hữu ích hơn mọi phỏng đoán. Góc nhìn của tôi bây giờ là: video đầu tiên không cần chứng minh năng lực, nó chỉ cần bắt đầu một cuộc đối thoại.",
+  cta: "Bạn đang giữ video nào trong bản nháp? Kể mình nghe một lý do nhé.",
+  storyboard: [
+    {
+      title: "Bản nháp thứ 12",
+      visual: "Mở thư mục có nhiều video nháp trên điện thoại.",
+      visualPurpose: "Cho thấy sự trì hoãn bằng một chi tiết cụ thể.",
+      broll: "Ngón tay lướt qua danh sách bản nháp.",
+      dialogue: "Tôi đã quay 12 lần nhưng chưa đăng lần nào.",
+      emotionalBeat: "Ngượng ngùng rồi tò mò",
+      transition: "Cắt theo động tác khóa màn hình.",
+      retentionRole: "Mở mâu thuẫn và hứa hẹn lời giải.",
+      direction: "Cận cảnh, chữ số 12 xuất hiện để giữ chân.",
+      durationSeconds: 5,
+    },
+    {
+      title: "Bấm đăng",
+      visual: "Ngón tay dừng ở nút đăng rồi nhấn xuống.",
+      visualPurpose: "Biến bài học thành một hành động nhìn thấy được.",
+      broll: "Phản ứng nhẹ sau khi video được đăng.",
+      dialogue: "Phản hồi thật hữu ích hơn mọi phỏng đoán.",
+      emotionalBeat: "Nhẹ nhõm",
+      transition: "Dừng hình ở câu hỏi CTA.",
+      retentionRole: "Khép bài học và mở hội thoại.",
+      direction: "Đổi từ cận cảnh sang trung cảnh, giữ CTA trên màn hình.",
+      durationSeconds: 8,
+    },
+  ],
+};
 test("validates real dates, flexible weekly volume and shooting constraints", () => {
   assert.equal(parseWeekStart("2028-02-29"), "2028-02-29");
   for (const value of ["2026-02-29", "2026-13-01", "today", "2026-09-05T00:00:00Z"]) assert.throws(() => parseWeekStart(value));
@@ -55,7 +97,14 @@ test("content planning and per-user API keys integration", async (t) => {
     lastKey = (this as unknown as { apiKey: string }).apiKey;
     lastPrompt = request.userPrompt;
     if (fail) throw new Error(`Provider error with sensitive key ${personalKey}`);
-    return { provider: "google-gemini" as const, model: "test-model", output: (request.schemaName === "connection_test" ? { ok: true } : malformed ? { items: [] } : { items }) as T };
+    const output = request.schemaName === "connection_test"
+      ? { ok: true }
+      : request.schemaName === "script_brainstorm_v1"
+        ? { concepts: scriptConcepts }
+        : request.schemaName === "content_script_v2"
+          ? generatedScript
+          : malformed ? { items: [] } : { items };
+    return { provider: "google-gemini" as const, model: "test-model", output: output as T };
   };
   const server = createApp().listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -80,6 +129,7 @@ test("content planning and per-user API keys integration", async (t) => {
     const generation = { baseVersion: 0, brief, directionId: direction.id };
     await t.test("all routes require authentication", async () => {
       for (const path of ["/settings/ai-key", "/content-plan?weekStart=2026-09-07"]) assert.equal((await request(path, "GET", undefined, "")).status, 401);
+      assert.equal((await request("/scripts/brainstorm", "POST", {}, "")).status, 401);
     });
     await t.test("personal key is verified, encrypted, masked and isolated", async () => {
       const saved = await request("/settings/ai-key", "PUT", { apiKey: personalKey }); assert.equal(saved.status, 200);
@@ -169,6 +219,7 @@ test("content planning and per-user API keys integration", async (t) => {
         revision: created.revision,
         title: created.title,
         status: created.status,
+        creativeStrategy: created.creativeStrategy,
         content: { ...created.content, body: "Phần nội dung tôi đã tự viết" },
         settings: created.settings,
         advancedSettings: created.advancedSettings,
@@ -213,6 +264,48 @@ test("content planning and per-user API keys integration", async (t) => {
       assert.equal(state.activePlanId, second.planId);
       assert.equal(state.versions[0]!.brief.name, "Kế hoạch nội dung 02");
       assert.deepEqual(state.versions[0]!.items.map((item) => item.dayIndex), [1, 3, 5]);
+    });
+    await t.test("brainstorms distinct angles before developing the creator's selected concept", async () => {
+      const experience = "Tôi đã quay 12 lần nhưng chưa dám đăng video đầu tiên.";
+      const brainstormResponse = await request("/scripts/brainstorm", "POST", {
+        title: "Video đầu tiên không cần hoàn hảo",
+        brief: "Gần gũi nhưng có quan điểm",
+        scheduledFor: null,
+        platform: "TikTok",
+        format: "Video ngắn",
+        targetDurationSeconds: 30,
+        creatorExperience: experience,
+        ctaStyle: "Mở hội thoại",
+        optionCount: 6,
+      });
+      assert.equal(brainstormResponse.status, 200);
+      const brainstorm = await brainstormResponse.json() as { concepts: Array<typeof scriptConcepts[number] & { id: string }>; recommendedId: string };
+      assert.equal(brainstorm.concepts.length, 6);
+      assert.equal(new Set(brainstorm.concepts.map((concept) => concept.angleType)).size, 6);
+      assert.equal(brainstorm.recommendedId, brainstorm.concepts[5]!.id);
+      assert.match(lastPrompt, /quay 12 lần/);
+
+      const selectedConcept = brainstorm.concepts.find((concept) => concept.id === brainstorm.recommendedId)!;
+      const createResponse = await request("/scripts", "POST", {
+        mode: "ai",
+        title: "Video đầu tiên không cần hoàn hảo",
+        brief: "Gần gũi nhưng có quan điểm",
+        scheduledFor: null,
+        platform: "TikTok",
+        format: "Video ngắn",
+        targetDurationSeconds: 30,
+        creatorExperience: experience,
+        ctaStyle: "Mở hội thoại",
+        selectedConcept,
+      });
+      assert.equal(createResponse.status, 201);
+      const script = await createResponse.json() as ScriptDocumentDto;
+      assert.equal(script.settings.targetDurationSeconds, 30);
+      assert.equal(script.creativeStrategy.selectedConcept?.id, selectedConcept.id);
+      assert.equal(script.creativeStrategy.creatorExperience, experience);
+      assert.equal(script.content.storyboard[0]!.visualPurpose, generatedScript.storyboard[0]!.visualPurpose);
+      assert.match(lastPrompt, /recommendedWords/);
+      assert.match(lastPrompt, /Mở hội thoại/);
     });
     await t.test("removal affects only personal key and restores shared connection", async () => {
       const response = await request("/settings/ai-key", "DELETE"); assert.equal(response.status, 200);
