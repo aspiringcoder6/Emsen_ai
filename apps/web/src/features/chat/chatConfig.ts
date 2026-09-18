@@ -3,6 +3,7 @@ export const chatOpenStorageKey = "emsen.chat.open";
 export const creatorDnaUpdatedEvent = "emsen:creator-dna-updated";
 export const directionUpdatedEvent = "emsen:direction-updated";
 export const contentPlanUpdatedEvent = "emsen:content-plan-updated";
+export const scriptUpdatedEvent = "emsen:script-updated";
 
 export function formatChatMessageTime(value: string) {
   return new Intl.DateTimeFormat("vi-VN", {

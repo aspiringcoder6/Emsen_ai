@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { EmsenAvatar } from "../components/branding/EmsenAvatar";
+import { scriptUpdatedEvent } from "../features/chat/chatConfig";
 import { assistScript, createScript, deleteScript, getScriptWorkspace, updateScript } from "../features/scripts/scriptApi";
 import { formatScriptDate, scriptProgress, scriptStatusConfig, scriptStatuses } from "../features/scripts/scriptConfig";
 import { CreateScriptPanel } from "../features/scripts/components/CreateScriptPanel";
@@ -77,6 +78,18 @@ export function ScriptsPage({ active, onSettings }: { active: boolean; onSetting
   useEffect(() => {
     if (active && !dirty) void load(Boolean(draft));
   }, [active]);
+  useEffect(() => {
+    const refresh = () => {
+      if (!active) return;
+      if (dirty) {
+        setNotice("Kịch bản đã thay đổi qua chat. Hãy lưu hoặc bỏ các chỉnh sửa đang mở trước khi tải lại.");
+        return;
+      }
+      void load(Boolean(draft));
+    };
+    window.addEventListener(scriptUpdatedEvent, refresh);
+    return () => window.removeEventListener(scriptUpdatedEvent, refresh);
+  }, [active, dirty, draft]);
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };

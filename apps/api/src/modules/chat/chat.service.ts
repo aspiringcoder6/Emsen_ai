@@ -43,6 +43,7 @@ import type {
   DirectionSkillOutput,
   GetCurrentDirectionInput,
 } from "../agent/direction.skills.js";
+import type { ScriptSkillInput, ScriptSkillOutput } from "../agent/script.skills.js";
 import {
   getNextProactiveQuestion,
   proactiveQuestionIds,
@@ -135,7 +136,8 @@ function isAgentSkillRun(value: unknown): value is AgentSkillRunDto {
       (candidate.target === null ||
         candidate.target === "content-plan" ||
         candidate.target === "creator-dna" ||
-        candidate.target === "direction") &&
+        candidate.target === "direction" ||
+        candidate.target === "script") &&
       (candidate.targetId === null || typeof candidate.targetId === "string") &&
       (candidate.targetVersion === null || Number.isSafeInteger(candidate.targetVersion)) &&
       typeof candidate.executedAt === "string",
@@ -204,6 +206,9 @@ const chatResponseSchema = {
             "content_plan.get_current",
             "content_plan.generate_draft",
             "content_plan.update_draft",
+            "script.get_current",
+            "script.create_draft",
+            "script.update_draft",
           ],
           type: "string",
         },
@@ -214,6 +219,46 @@ const chatResponseSchema = {
         planName: {
           description: "Tên kế hoạch được gọi rõ hoặc tên kế hoạch mới, nếu không để rỗng.",
           maxLength: 120,
+          type: "string",
+        },
+        contentTitle: {
+          description: "Tên nội dung đã lên lịch trong kế hoạch để tạo kịch bản; không đoán nếu thiếu.",
+          maxLength: 200,
+          type: "string",
+        },
+        scriptTitle: {
+          description: "Tên kịch bản được gọi rõ hoặc chủ đề kịch bản mới; nếu không rõ để rỗng.",
+          maxLength: 200,
+          type: "string",
+        },
+        scriptId: {
+          description: "ID kịch bản nếu được cung cấp rõ, nếu không để rỗng.",
+          type: "string",
+        },
+        scriptSection: {
+          description: "Phần kịch bản cần chỉnh; none nếu người dùng chưa chỉ rõ.",
+          enum: ["none", "hook", "body", "cta", "storyboard"],
+          type: "string",
+        },
+        scriptMode: {
+          description: "ai để Emsen viết nội dung; manual chỉ khi người dùng muốn bản nháp trống.",
+          enum: ["ai", "manual"],
+          type: "string",
+        },
+        scriptDurationSeconds: {
+          description: "Thời lượng video bằng giây nếu người dùng nói rõ, không thì 0.",
+          maximum: 3600,
+          minimum: 0,
+          type: "integer",
+        },
+        scriptPlatform: {
+          description: "Nền tảng được nói rõ, hoặc chuỗi rỗng.",
+          maxLength: 80,
+          type: "string",
+        },
+        scriptFormat: {
+          description: "Định dạng được nói rõ, hoặc chuỗi rỗng.",
+          maxLength: 80,
           type: "string",
         },
         replaceAvailableDays: {
@@ -262,6 +307,14 @@ const chatResponseSchema = {
         "replaceWeeklyVideoTarget",
         "replaceWeekStart",
         "replaceFocus",
+        "contentTitle",
+        "scriptTitle",
+        "scriptId",
+        "scriptSection",
+        "scriptMode",
+        "scriptDurationSeconds",
+        "scriptPlatform",
+        "scriptFormat",
       ],
       type: "object",
     },
@@ -633,7 +686,7 @@ function buildSystemPrompt(
     .map(({ promptId, question }) => `${promptId}: ${question}`)
     .join("\n");
   const productSkills = getAgentSkillCatalog().filter(({ name }) =>
-    name.startsWith("direction.") || name.startsWith("content_plan."),
+    name.startsWith("direction.") || name.startsWith("content_plan.") || name.startsWith("script."),
   );
 
   return `Bạn là emsen buddy, trợ lý sáng tạo thân thiện cho creator Việt Nam.
@@ -653,10 +706,13 @@ Mục tiêu:
 - Dùng content_plan.get_current khi người dùng muốn xem hoặc nghe tóm tắt một kế hoạch nội dung.
 - Dùng content_plan.generate_draft khi người dùng yêu cầu tạo một kế hoạch mới. Trích tên, tuần, ngày rảnh, số video và trọng tâm nếu họ nói rõ.
 - Dùng content_plan.update_draft khi người dùng muốn sắp lại hoặc thay đổi kế hoạch hiện có. planName/planId dùng để chọn đúng kế hoạch; không tự đoán nếu có nhiều kết quả.
+- Dùng script.get_current khi muốn xem danh sách hoặc nội dung kịch bản; script.create_draft khi yêu cầu tạo kịch bản trực tiếp; script.update_draft khi yêu cầu chỉnh hook, nội dung chính, CTA, storyboard hoặc thông số video của một kịch bản đang làm.
+- Khi tạo từ kế hoạch, trích đúng planName và contentTitle. Không chọn bừa nội dung/kịch bản nếu có nhiều kết quả. Không tự tạo kịch bản khi người dùng chỉ xin ý tưởng/hook hoặc hỏi giả định.
+- Chỉ tạo/chỉnh bản nháp kịch bản. Không tự chuyển trạng thái sẵn sàng, hoàn thành, lưu trữ hoặc xóa; các thao tác này cần người dùng xác nhận trong trang Kịch bản.
 - Với ngày rảnh, 0 là Thứ Hai và 6 là Chủ nhật. weeklyVideoTarget bằng 0 nghĩa là để AI tự quyết định.
 - Các cờ replace... chỉ được bật khi người dùng yêu cầu đổi trường tương ứng; nếu không, skill cập nhật phải giữ dữ liệu hiện tại.
 - Chỉ dùng skill ghi khi người dùng yêu cầu hành động trực tiếp. Nếu họ chỉ hỏi giả định, xin lời khuyên hoặc hỏi "có nên", hãy trả lời tư vấn và dùng none.
-- Skill tạo/chỉnh Định hướng hoặc Kế hoạch chỉ tạo bản nháp; tuyệt đối không nói rằng đã chốt hoặc phê duyệt thay người dùng.
+- Skill tạo/chỉnh Định hướng, Kế hoạch hoặc Kịch bản chỉ tạo/chỉnh bản nháp; tuyệt đối không nói rằng đã chốt hoặc phê duyệt thay người dùng.
 - Nếu người dùng yêu cầu chốt/phê duyệt hoặc xóa, không gọi skill ghi; giải thích rằng họ cần xác nhận trong màn hình nghiệp vụ.
 - Khi chọn một skill nghiệp vụ, đặt nextQuestionId là "none" để tập trung hoàn thành yêu cầu chính.
 - Nếu không cần thao tác dữ liệu hệ thống, skillCall.name phải là "none".
@@ -780,7 +836,7 @@ async function generateChatOutput(
   return { errorMessage, model, output, provider: responseProvider, status };
 }
 
-type ProductSkillOutput = ContentPlanSkillOutput | DirectionSkillOutput;
+type ProductSkillOutput = ContentPlanSkillOutput | DirectionSkillOutput | ScriptSkillOutput;
 
 async function executeAgentChatSkill(
   userId: string,
@@ -821,6 +877,21 @@ async function executeAgentChatSkill(
       ContentPlanSkillOutput
     >(call.name, { userId }, input);
   }
+  if (call.name.startsWith("script.")) {
+    const input: ScriptSkillInput = {
+      contentTitle: call.contentTitle,
+      instruction: call.instruction,
+      planName: call.planName,
+      scriptDurationSeconds: call.scriptDurationSeconds,
+      scriptFormat: call.scriptFormat,
+      scriptId: call.scriptId,
+      scriptMode: call.scriptMode,
+      scriptPlatform: call.scriptPlatform,
+      scriptSection: call.scriptSection,
+      scriptTitle: call.scriptTitle,
+    };
+    return agentSkillRegistry.execute<ScriptSkillInput, ScriptSkillOutput>(call.name, { userId }, input);
+  }
   const input: ContentPlanDraftSkillInput = {
     availableDays: call.availableDays.length ? call.availableDays : null,
     focus: call.focus,
@@ -843,6 +914,9 @@ async function executeAgentChatSkill(
 
 function agentSkillFailureReply(error: unknown) {
   if (error instanceof HttpError) {
+    if (error.code.startsWith("SCRIPT_") || error.code.startsWith("PLAN_ITEM_")) {
+      return error.message;
+    }
     return `Mình chưa thể thực hiện thay đổi này: ${error.message}`;
   }
   return "Mình chưa thể thao tác với dữ liệu lúc này. Bản hiện tại vẫn được giữ nguyên; bạn hãy thử lại sau nhé.";

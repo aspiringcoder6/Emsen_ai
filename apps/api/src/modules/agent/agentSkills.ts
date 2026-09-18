@@ -13,6 +13,11 @@ import {
   getCurrentContentPlanSkill,
   updateContentPlanDraftSkill,
 } from "./contentPlan.skills.js";
+import {
+  createScriptDraftSkill,
+  getCurrentScriptSkill,
+  updateScriptDraftSkill,
+} from "./script.skills.js";
 
 export const agentSkillRegistry = new AgentSkillRegistry();
 
@@ -24,6 +29,9 @@ agentSkillRegistry.register(updateDirectionDraftSkill);
 agentSkillRegistry.register(getCurrentContentPlanSkill);
 agentSkillRegistry.register(generateContentPlanDraftSkill);
 agentSkillRegistry.register(updateContentPlanDraftSkill);
+agentSkillRegistry.register(getCurrentScriptSkill);
+agentSkillRegistry.register(createScriptDraftSkill);
+agentSkillRegistry.register(updateScriptDraftSkill);
 
 export function getAgentSkillCatalog() {
   return agentSkillRegistry.catalog();

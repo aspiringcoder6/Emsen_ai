@@ -11,7 +11,7 @@ import type {
   AskProactiveQuestionOutput,
 } from "../src/modules/agent/creatorDna.skills.js";
 
-test("the Emsen registry exposes the eight MVP agent skills", () => {
+test("the Emsen registry exposes the eleven MVP agent skills", () => {
   assert.deepEqual(
     getAgentSkillCatalog().map(({ name }) => name),
     [
@@ -23,6 +23,9 @@ test("the Emsen registry exposes the eight MVP agent skills", () => {
       "content_plan.get_current",
       "content_plan.generate_draft",
       "content_plan.update_draft",
+      "script.get_current",
+      "script.create_draft",
+      "script.update_draft",
     ],
   );
 });
@@ -132,4 +135,75 @@ test("chat can read a content plan without mutating it", () => {
     inferAgentSkillCall("Cho mình xem kế hoạch nội dung hiện tại").name,
     "content_plan.get_current",
   );
+});
+
+test("chat creates a script from a named content plan instead of changing the plan", () => {
+  const call = inferAgentSkillCall("Tạo kịch bản từ Kế hoạch nội dung 01 cho nội dung về một ngày bắt đầu lại");
+  assert.equal(call.name, "script.create_draft");
+  assert.equal(call.planName, "ke hoach noi dung 01");
+});
+
+test("chat recognizes a shortened plan name and a quoted scheduled item", () => {
+  const call = inferAgentSkillCall("Tạo kịch bản cho nội dung “Một ngày bắt đầu lại” trong kế hoạch 01");
+  assert.equal(call.name, "script.create_draft");
+  assert.equal(call.planName, "ke hoach 01");
+  assert.equal(call.contentTitle, "Một ngày bắt đầu lại");
+});
+
+test("chat updates only the specified script section", () => {
+  const call = inferAgentSkillCall("Sửa hook của kịch bản “Một ngày bắt đầu lại” cho gần gũi hơn");
+  assert.equal(call.name, "script.update_draft");
+  assert.equal(call.scriptSection, "hook");
+  assert.equal(call.scriptTitle, "Một ngày bắt đầu lại");
+});
+
+test("chat reads scripts without writing", () => {
+  assert.equal(inferAgentSkillCall("Cho mình xem các kịch bản hiện tại").name, "script.get_current");
+});
+
+test("chat cannot delete or finalize a script", () => {
+  for (const content of ["Xóa kịch bản này", "Chốt kịch bản này", "Nếu sửa kịch bản thì có sao không?"]) {
+    assert.equal(resolveAgentSkillCall(content, {
+      ...emptyAgentChatSkillCall(), name: "script.update_draft",
+    }).name, "none");
+  }
+});
+
+test("a generic hook request cannot create a stored script", () => {
+  const call = resolveAgentSkillCall("Giúp mình viết ba hook cho video hôm nay", {
+    ...emptyAgentChatSkillCall(), name: "script.create_draft",
+  });
+  assert.equal(call.name, "none");
+});
+
+test("the script help quick prompt remains a conversation, not a database write", () => {
+  assert.equal(inferAgentSkillCall("Mình cần hỗ trợ viết kịch bản").name, "none");
+  assert.equal(inferAgentSkillCall("Kịch bản của mình hơi dài").name, "none");
+});
+
+test("an independent script stays independent even if the model imagines a matching plan item", () => {
+  const call = resolveAgentSkillCall("Tạo kịch bản về Bắt đầu làm content", {
+    ...emptyAgentChatSkillCall(),
+    name: "script.create_draft",
+    contentTitle: "Bắt đầu làm content",
+    planName: "Kế hoạch nội dung 01",
+  });
+  assert.equal(call.name, "script.create_draft");
+  assert.equal(call.contentTitle, "");
+  assert.equal(call.planName, "");
+  assert.equal(call.scriptTitle, "Bắt đầu làm content");
+});
+
+test("changing script duration is routed to settings without changing creative sections", () => {
+  const call = inferAgentSkillCall("Đổi thời lượng kịch bản “Bắt đầu làm content” thành 30 giây");
+  assert.equal(call.name, "script.update_draft");
+  assert.equal(call.scriptSection, "none");
+  assert.equal(call.scriptDurationSeconds, 30);
+});
+
+test("chat extracts common script platform and minute duration without the model", () => {
+  const call = inferAgentSkillCall("Đổi kịch bản “Bắt đầu làm content” sang TikTok, dài 1 phút");
+  assert.equal(call.name, "script.update_draft");
+  assert.equal(call.scriptPlatform, "TikTok");
+  assert.equal(call.scriptDurationSeconds, 60);
 });

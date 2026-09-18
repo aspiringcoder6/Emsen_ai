@@ -144,7 +144,10 @@ export type AgentSkillName =
   | "direction.update_draft"
   | "content_plan.get_current"
   | "content_plan.generate_draft"
-  | "content_plan.update_draft";
+  | "content_plan.update_draft"
+  | "script.get_current"
+  | "script.create_draft"
+  | "script.update_draft";
 
 export type AgentSkillMode = "read" | "draft-write" | "write";
 
@@ -155,7 +158,7 @@ export type AgentSkillRunDto = {
   name: AgentSkillName;
   status: "failed" | "succeeded";
   summary: string;
-  target: "content-plan" | "creator-dna" | "direction" | null;
+  target: "content-plan" | "creator-dna" | "direction" | "script" | null;
   targetId: string | null;
   targetVersion: number | null;
 };

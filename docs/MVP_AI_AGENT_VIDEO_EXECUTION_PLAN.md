@@ -69,6 +69,13 @@ Phương án này tận dụng tối đa phần đã có và tránh xây riêng 
 - Đã thêm migration 12, unit test cho intent/registry và integration test cho luồng Creator DNA → chat → Định hướng → Kế hoạch nội dung.
 - Chưa triển khai confirmation token, idempotency tổng quát, skill Kịch bản và audit table độc lập; đây là phần tiếp theo của Milestone A.
 
+### Cập nhật triển khai ngày 18/09/2026
+
+- Đã bổ sung ba skill Kịch bản cho Emsen: đọc/liệt kê, tạo nháp độc lập hoặc gắn với một nội dung đã chốt, và chỉnh riêng hook/nội dung/CTA/storyboard hoặc thông số video.
+- Luồng chọn kế hoạch, nội dung và kịch bản dừng để hỏi lại nếu trùng/không rõ; skill chỉnh giữ các phần không liên quan và dùng revision để tránh ghi đè thay đổi đồng thời.
+- Chat lưu skill run và làm mới trang Kịch bản sau thay đổi, nhưng giữ nguyên bản đang mở nếu người dùng còn chỉnh sửa chưa lưu.
+- Chưa có preview/diff trước khi áp dụng, confirmation token, idempotency tổng quát hoặc bảng audit riêng. Xóa, chốt trạng thái và xuất tệp vẫn ở giao diện Kịch bản, chưa mở cho chat.
+
 ### Kết luận về khả năng thực hiện
 
 Mốc 3 tuần khả thi vì phần nghiệp vụ nội dung đã tồn tại. Tuy nhiên, mốc này chỉ thực tế khi giữ video ở mức vertical slice và không mở rộng thành timeline editor nhiều track.

@@ -11,6 +11,7 @@ import type {
   DirectionContentDto,
   DirectionStateDto,
   SendChatMessageResponseDto,
+  ScriptWorkspaceDto,
 } from "@creator-flow/contracts";
 import { emptyAgentChatSkillCall } from "../src/modules/agent/agentChatPlanner.js";
 
@@ -76,6 +77,36 @@ test("chat executes Creator DNA, Direction and Content Plan work through registe
             title: `Nội dung ${index + 1}`,
           })),
         } as TOutput,
+        provider: "google-gemini" as const,
+      };
+    }
+    if (request.schemaName === "content_script_v2") {
+      return {
+        model: "agent-skill-test-model",
+        output: {
+          hook: "Hook gốc của kịch bản",
+          body: "Một nội dung hữu ích cho người mới bắt đầu.",
+          cta: "Bạn sẽ thử điều gì đầu tiên?",
+          storyboard: [0, 1].map((index) => ({
+            title: `Cảnh ${index + 1}`,
+            visual: "Người nói trước máy quay",
+            visualPurpose: "Giữ mạch kể",
+            broll: "Bàn làm việc",
+            dialogue: "Một câu thoại ngắn",
+            emotionalBeat: "Gần gũi",
+            transition: "Cắt thẳng",
+            retentionRole: "Giữ sự chú ý",
+            direction: "Quay cận mặt",
+            durationSeconds: 5,
+          })),
+        } as TOutput,
+        provider: "google-gemini" as const,
+      };
+    }
+    if (request.schemaName === "script_hook_assist_v2") {
+      return {
+        model: "agent-skill-test-model",
+        output: { suggestion: "Hook mới gần gũi và cụ thể hơn" } as TOutput,
         provider: "google-gemini" as const,
       };
     }
@@ -218,6 +249,45 @@ test("chat executes Creator DNA, Direction and Content Plan work through registe
     assert.equal(planState.versions[0]?.direction.id, direction.versions[0]?.id);
     assert.equal(planState.versions[0]?.direction.status, "draft");
     assert.match(lastPlanInstruction ?? "", /ưu tiên nội dung dễ quay/);
+
+    const createScriptResponse = await request({
+      content: "Tạo kịch bản về Bắt đầu làm content",
+      currentPage: "Kịch bản",
+    });
+    assert.equal(createScriptResponse.status, 201);
+    const createScriptChat = (await createScriptResponse.json()) as SendChatMessageResponseDto;
+    assert.equal(createScriptChat.assistantMessage.skillRuns[0]?.name, "script.create_draft");
+    const scriptId = createScriptChat.assistantMessage.skillRuns[0]?.targetId;
+    assert.ok(scriptId);
+    const scriptsUrl = `http://127.0.0.1:${address.port}/api/scripts`;
+    const createdWorkspace = (await (await fetch(scriptsUrl, { headers: { Cookie: cookie } })).json()) as ScriptWorkspaceDto;
+    const created = createdWorkspace.scripts.find((script) => script.id === scriptId);
+    assert.equal(created?.status, "draft");
+    assert.equal(created?.content.hook, "Hook gốc của kịch bản");
+
+    const updateScriptResponse = await request({
+      content: "Sửa hook của kịch bản “Bắt đầu làm content” cho gần gũi hơn",
+      currentPage: "Kịch bản",
+    });
+    assert.equal(updateScriptResponse.status, 201);
+    const updateScriptChat = (await updateScriptResponse.json()) as SendChatMessageResponseDto;
+    assert.equal(updateScriptChat.assistantMessage.skillRuns[0]?.name, "script.update_draft");
+    assert.equal(updateScriptChat.assistantMessage.skillRuns[0]?.targetVersion, 2);
+    const updatedWorkspace = (await (await fetch(scriptsUrl, { headers: { Cookie: cookie } })).json()) as ScriptWorkspaceDto;
+    const updated = updatedWorkspace.scripts.find((script) => script.id === scriptId);
+    assert.equal(updated?.content.hook, "Hook mới gần gũi và cụ thể hơn");
+    assert.equal(updated?.content.body, created?.content.body);
+    assert.equal(updated?.status, "draft");
+
+    const deleteScriptResponse = await request({
+      content: "Xóa kịch bản này",
+      currentPage: "Kịch bản",
+    });
+    assert.equal(deleteScriptResponse.status, 201);
+    const deleteScriptChat = (await deleteScriptResponse.json()) as SendChatMessageResponseDto;
+    assert.equal(deleteScriptChat.assistantMessage.skillRuns.some((run) => run.target === "script"), false);
+    const afterDeleteRequest = (await (await fetch(scriptsUrl, { headers: { Cookie: cookie } })).json()) as ScriptWorkspaceDto;
+    assert.ok(afterDeleteRequest.scripts.some((script) => script.id === scriptId));
   } finally {
     GeminiAiProvider.prototype.generateStructured = originalGenerate;
     await new Promise<void>((resolve, reject) =>

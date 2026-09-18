@@ -17,6 +17,7 @@ import {
   contentPlanUpdatedEvent,
   creatorDnaUpdatedEvent,
   directionUpdatedEvent,
+  scriptUpdatedEvent,
   formatChatMessageTime,
 } from "./chatConfig";
 
@@ -32,6 +33,7 @@ const quickPrompts = [
   "Mình đang có một ý tưởng mới",
   "Giúp mình phát triển một concept",
   "Mình cần hỗ trợ viết kịch bản",
+  "Cho mình xem kịch bản hiện có",
   "Cho mình xem định hướng hiện tại",
   "Lên kế hoạch nội dung tuần này",
 ];
@@ -43,6 +45,9 @@ const productSkillLabels = {
   "direction.generate_draft": "Đã tạo bản nháp Định hướng",
   "direction.get_current": "Đã đọc Định hướng",
   "direction.update_draft": "Đã cập nhật bản nháp Định hướng",
+  "script.get_current": "Đã đọc Kịch bản",
+  "script.create_draft": "Đã tạo bản nháp Kịch bản",
+  "script.update_draft": "Đã chỉnh bản nháp Kịch bản",
 } as const;
 
 function AssistantMessage({ message }: { message: ChatMessageDto }) {
@@ -78,7 +83,7 @@ function AssistantMessage({ message }: { message: ChatMessageDto }) {
         ) : null}
         {message.skillRuns
           .filter(
-            (run) => run.target === "direction" || run.target === "content-plan",
+            (run) => run.target === "direction" || run.target === "content-plan" || run.target === "script",
           )
           .map((run) => (
             <div
@@ -245,6 +250,15 @@ export function ChatAssistant({
             detail: { planId: updatedPlan.targetId },
           }),
         );
+      }
+      const updatedScript = result.assistantMessage.skillRuns.find(
+        (run) => run.status === "succeeded" &&
+          (run.name === "script.create_draft" || run.name === "script.update_draft"),
+      );
+      if (updatedScript) {
+        window.dispatchEvent(new CustomEvent(scriptUpdatedEvent, {
+          detail: { scriptId: updatedScript.targetId },
+        }));
       }
       setChat((current) =>
         current
@@ -417,7 +431,7 @@ export function ChatAssistant({
                     <EmsenAvatar emotion="wonder" alt="Emsen đang suy nghĩ" className="h-10 w-10" />
                     <LoaderCircle className="absolute -bottom-1 -right-1 animate-spin rounded-full bg-white p-0.5 text-[#46A82D]" size={15} />
                   </div>
-                  emsen đang suy nghĩ và đọc Creator DNA…
+                  emsen đang xem yêu cầu của bạn…
                 </div>
               ) : null}
             </div>

@@ -1,4 +1,4 @@
-import type { AgentSkillName, DirectionSection } from "@creator-flow/contracts";
+import type { AgentSkillName, DirectionSection, ScriptAssistSection } from "@creator-flow/contracts";
 
 export const agentChatSkillNames = [
   "none",
@@ -8,6 +8,9 @@ export const agentChatSkillNames = [
   "content_plan.get_current",
   "content_plan.generate_draft",
   "content_plan.update_draft",
+  "script.get_current",
+  "script.create_draft",
+  "script.update_draft",
 ] as const;
 
 export type AgentChatSkillName =
@@ -27,6 +30,14 @@ export type AgentChatSkillCall = {
   replaceWeekStart: boolean;
   replaceWeeklyVideoTarget: boolean;
   section: DirectionSection | "all";
+  contentTitle: string;
+  scriptDurationSeconds: number;
+  scriptFormat: string;
+  scriptId: string;
+  scriptMode: "ai" | "manual";
+  scriptPlatform: string;
+  scriptSection: ScriptAssistSection | "none";
+  scriptTitle: string;
   weekStart: string;
   weeklyVideoTarget: number;
 };
@@ -47,6 +58,14 @@ export function emptyAgentChatSkillCall(): AgentChatSkillCall {
     replaceWeekStart: false,
     replaceWeeklyVideoTarget: false,
     section: "all",
+    contentTitle: "",
+    scriptDurationSeconds: 0,
+    scriptFormat: "",
+    scriptId: "",
+    scriptMode: "ai",
+    scriptPlatform: "",
+    scriptSection: "none",
+    scriptTitle: "",
     weekStart: "",
     weeklyVideoTarget: 0,
   };
@@ -67,6 +86,20 @@ export function isAgentChatSkillCall(value: unknown): value is AgentChatSkillCal
       typeof candidate.planId === "string" &&
       typeof candidate.planName === "string" &&
       candidate.planName.length <= 120 &&
+      typeof candidate.contentTitle === "string" &&
+      candidate.contentTitle.length <= 200 &&
+      typeof candidate.scriptTitle === "string" &&
+      candidate.scriptTitle.length <= 200 &&
+      typeof candidate.scriptId === "string" &&
+      typeof candidate.scriptFormat === "string" &&
+      candidate.scriptFormat.length <= 80 &&
+      typeof candidate.scriptPlatform === "string" &&
+      candidate.scriptPlatform.length <= 80 &&
+      (candidate.scriptMode === "ai" || candidate.scriptMode === "manual") &&
+      ["none", "hook", "body", "cta", "storyboard"].includes(candidate.scriptSection ?? "") &&
+      Number.isInteger(candidate.scriptDurationSeconds) &&
+      candidate.scriptDurationSeconds! >= 0 &&
+      candidate.scriptDurationSeconds! <= 3_600 &&
       typeof candidate.weekStart === "string" &&
       typeof candidate.focus === "string" &&
       candidate.focus.length <= 2_000 &&
@@ -209,9 +242,63 @@ function inferPlanCall(clean: string, plain: string): AgentChatSkillCall {
   return { ...inferred, name: "content_plan.get_current" };
 }
 
+function inferScriptSection(plain: string): ScriptAssistSection | "none" {
+  if (/storyboard|phan canh|canh quay|khung hinh/.test(plain)) return "storyboard";
+  if (/\bhook\b|mo dau|cau dau/.test(plain)) return "hook";
+  if (/\bcta\b|keu goi hanh dong|ket bai|ket thuc/.test(plain)) return "cta";
+  if (/noi dung chinh|than bai|phan than|dien bien/.test(plain)) return "body";
+  return "none";
+}
+
+function inferScriptCall(clean: string, plain: string): AgentChatSkillCall {
+  const call = emptyAgentChatSkillCall();
+  if (blockedWriteRequest.test(plain)) return call;
+  const planName = plain.match(/\bke hoach(?: noi dung)?\s+\d{1,3}\b/)?.[0] ?? "";
+  const quoted = clean.match(/[“"']([^”"']{2,200})[”"']/)?.[1]?.trim() ?? "";
+  const scriptId = clean.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i)?.[0] ?? "";
+  const independentTitle = clean.match(/kịch bản(?:\s+(?:trống|nháp trống))?\s+(?:về|cho|chủ đề)\s+(.{2,200})/i)?.[1]?.trim() ?? "";
+  const mentionsSchedule = /ke hoach|content plan|timeline|noi dung da len lich/.test(plain);
+  const contentTitle = mentionsSchedule
+    ? clean.match(/nội dung\s+(?:về|cho|chủ đề)\s+(.{2,200})/i)?.[1]?.trim() ??
+      (planName && quoted ? quoted : "")
+    : "";
+  const secondsMatch = plain.match(/\b(\d{1,4})\s*(giay|s)\b/);
+  const minutesMatch = plain.match(/\b(\d{1,2})\s*(phut|p)\b/);
+  const platform = clean.match(/\b(TikTok|Instagram|YouTube|Facebook)\b/i)?.[1] ?? "";
+  const format = clean.match(/\b(Reels?|Shorts)\b|video ngắn/i)?.[0] ?? "";
+  const inferred: AgentChatSkillCall = {
+    ...call,
+    contentTitle,
+    instruction: clean,
+    planName,
+    scriptDurationSeconds: secondsMatch ? Number(secondsMatch[1]) : minutesMatch ? Number(minutesMatch[1]) * 60 : 0,
+    scriptFormat: format,
+    scriptId,
+    scriptMode: /ban nhap trong|kich ban trong|tu viet|thu cong/.test(plain) ? "manual" : "ai",
+    scriptPlatform: platform,
+    scriptSection: inferScriptSection(plain),
+    scriptTitle: quoted || independentTitle,
+  };
+  if (directChangeRequest(plain)) return { ...inferred, name: "script.update_draft" };
+  if (/\bho tro\b/.test(plain) && !planName && !independentTitle && !quoted) return call;
+  if (/\b(goi y|de xuat|tu van)\b/.test(plain)) return call;
+  if (/^(tao|viet|soan|lap)\b/.test(plain) ||
+    (requestLead.test(plain) && /\b(tao|viet|soan|lap)\b/.test(plain))) {
+    return { ...inferred, name: "script.create_draft" };
+  }
+  if (/\b(xem|doc|liet ke|danh sach|tom tat|xuat|hien co|hien tai)\b/.test(plain)) {
+    return { ...inferred, name: "script.get_current" };
+  }
+  return call;
+}
+
 export function inferAgentSkillCall(content: string): AgentChatSkillCall {
   const clean = content.trim().slice(0, 4_000);
   const plain = normalized(clean);
+  if (/kich ban|script|storyboard/.test(plain) &&
+    !/^(sua|chinh sua|doi|cap nhat|dieu chinh)\s+ke hoach noi dung\b/.test(plain)) {
+    return inferScriptCall(clean, plain);
+  }
   if (/ke hoach noi dung|content plan|lich noi dung|len ke hoach|len lich content/.test(plain)) {
     return inferPlanCall(clean, plain);
   }
@@ -225,6 +312,9 @@ export function resolveAgentSkillCall(
   const inferred = inferAgentSkillCall(content);
   const plain = normalized(content);
   if (inferred.name === "none") {
+    if (modelCall.name.startsWith("script.")) {
+      return emptyAgentChatSkillCall();
+    }
     if (
       modelCall.name !== "none" &&
       modelCall.name !== "direction.get_current" &&
@@ -236,6 +326,7 @@ export function resolveAgentSkillCall(
     }
     return modelCall;
   }
+  const scriptCall = inferred.name.startsWith("script.");
   return {
     ...modelCall,
     availableDays: inferred.replaceAvailableDays
@@ -243,13 +334,25 @@ export function resolveAgentSkillCall(
       : modelCall.availableDays,
     instruction: content.trim().slice(0, 4_000),
     name: inferred.name,
-    planName: inferred.planName || modelCall.planName,
+    planName: scriptCall
+      ? inferred.planName || (modelCall.planName && plain.includes(normalized(modelCall.planName)) ? modelCall.planName : "")
+      : inferred.planName || modelCall.planName,
     replaceAvailableDays:
       inferred.replaceAvailableDays || modelCall.replaceAvailableDays,
     replaceWeekStart: inferred.replaceWeekStart || modelCall.replaceWeekStart,
     replaceWeeklyVideoTarget:
       inferred.replaceWeeklyVideoTarget || modelCall.replaceWeeklyVideoTarget,
     section: inferred.section,
+    contentTitle: inferred.contentTitle ||
+      (scriptCall && /ke hoach|content plan|timeline|noi dung da len lich/.test(plain) &&
+      modelCall.contentTitle && plain.includes(normalized(modelCall.contentTitle)) ? modelCall.contentTitle : ""),
+    scriptDurationSeconds: inferred.scriptDurationSeconds,
+    scriptId: inferred.scriptId || (modelCall.scriptId && plain.includes(normalized(modelCall.scriptId)) ? modelCall.scriptId : ""),
+    scriptFormat: inferred.scriptFormat || (modelCall.scriptFormat && plain.includes(normalized(modelCall.scriptFormat)) ? modelCall.scriptFormat : ""),
+    scriptMode: inferred.scriptMode,
+    scriptPlatform: inferred.scriptPlatform || (modelCall.scriptPlatform && plain.includes(normalized(modelCall.scriptPlatform)) ? modelCall.scriptPlatform : ""),
+    scriptSection: inferred.scriptSection,
+    scriptTitle: inferred.scriptTitle || (modelCall.scriptTitle && plain.includes(normalized(modelCall.scriptTitle)) ? modelCall.scriptTitle : ""),
     weekStart: inferred.replaceWeekStart ? inferred.weekStart : modelCall.weekStart,
     weeklyVideoTarget: inferred.replaceWeeklyVideoTarget
       ? inferred.weeklyVideoTarget
