@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { ContentPlanVersionDto, ScriptDocumentDto, UpdateScriptRequestDto } from "@creator-flow/contracts";
 import { parseCreateScript, parseScriptAssist, parseScriptBrainstorm, parseStoryboard, parseUpdateScript } from "../src/modules/scripts/script.schema.js";
 import { synchronizeScriptWithPlan } from "../src/modules/scripts/scriptPlanSync.js";
+import { buildFlexibleTimelineGuide, countSpokenWords, normalizeScriptTimeline, scriptGenerationIssues, scriptTimelineIssues, scriptWordBudget } from "../src/modules/scripts/scriptTimeline.js";
 
 const validDraft: UpdateScriptRequestDto = {
   revision: 1,
@@ -87,6 +88,49 @@ test("validates manual and scheduled script creation", () => {
     { mode: "manual", title: "Kịch bản", brief: "", scheduledFor: "2026-02-30", platform: "", format: "" },
     { mode: "ai", title: "", brief: "", scheduledFor: null, platform: "", format: "", contentPlanVersionId: "bad", dayIndex: 7 },
   ]) assert.throws(() => parseCreateScript(input));
+});
+
+test("accepts flexible timestamp layouts that cover the selected duration", () => {
+  const guide = buildFlexibleTimelineGuide(60);
+  assert.equal(guide.targetDurationSeconds, 60);
+  assert.match(guide.note, /Không có tỷ lệ/);
+
+  const words = Array.from({ length: 104 }, (_, index) => `từ${index + 1}`);
+  const content = normalizeScriptTimeline({
+    hook: "0:00-0:04: Một hook đủ cụ thể để người xem dừng lại và muốn nghe tiếp câu chuyện này.",
+    body: [
+      `[0:04-0:19] ${words.slice(0, 34).join(" ")}`,
+      `[0:19-0:42] ${words.slice(34, 75).join(" ")}`,
+      `[0:42-0:54] ${words.slice(75).join(" ")}`,
+    ].join("\n"),
+    cta: "[0:54-1:00] Bạn từng gặp điều này chưa, hãy kể trải nghiệm thật của bạn ở phần bình luận nhé.",
+    storyboard: [],
+  });
+  assert.match(content.hook, /^\[0:00–0:04\]/);
+  assert.match(content.cta, /^\[0:54–1:00\]/);
+  assert.equal(countSpokenWords(content.body), 104);
+  assert.deepEqual(scriptGenerationIssues(content, 60), []);
+
+  const differentButValid = {
+    ...content,
+    hook: "[0:00–0:07] Hook dài hơn vì mở bằng một tình huống cụ thể đủ lời thoại để dẫn vào câu chuyện.",
+    body: `[0:07–0:30] ${words.slice(0, 52).join(" ")}\n[0:30–0:50] ${words.slice(52).join(" ")}`,
+    cta: "[0:50–1:00] Bạn từng gặp điều này chưa, hãy kể trải nghiệm thật của bạn ở phần bình luận nhé.",
+  };
+  assert.deepEqual(scriptTimelineIssues(differentButValid, 60), []);
+});
+
+test("rejects a visibly short script for its selected duration", () => {
+  const budget = scriptWordBudget(60);
+  assert.deepEqual(budget.total, { min: 130, max: 170 });
+  const issues = scriptGenerationIssues({
+    hook: "Có những hôm ăn uống đến phát khóc.",
+    body: "Tâm sự thật lòng.",
+    cta: "Bạn có đang gặp khó khăn nào khi ăn uống không?",
+    storyboard: [],
+  }, 60);
+  assert.ok(issues.some((issue) => issue.includes("Tổng lời thoại")));
+  assert.ok(issues.some((issue) => issue.includes("Phần nội dung")));
 });
 
 test("validates creative brainstorming inputs", () => {

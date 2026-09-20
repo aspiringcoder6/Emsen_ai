@@ -29,6 +29,7 @@ import { EmsenAvatar } from "../../../components/branding/EmsenAvatar";
 import { downloadScript, scriptAsText } from "../scriptExport";
 import { formatScriptDate, scriptStatusConfig, scriptStatuses, scriptSyncFieldLabels } from "../scriptConfig";
 import { countScriptWords, recommendedScriptWords, scriptDurationPresets } from "../scriptDuration";
+import { parseTimelineText, serializeTimelineText } from "../scriptTimeline";
 
 const inputClass = "mt-2 w-full rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2.5 text-sm font-normal leading-6 text-[#31583A] outline-none transition focus:border-[#72B65D] focus:ring-2 focus:ring-[#DDEED6]";
 
@@ -50,16 +51,19 @@ function AiPrompt({
   const [prompt, setPrompt] = useState("");
   const suggestions: Record<ScriptAssistSection, string[]> = {
     hook: [
+      "Căn hook theo nhịp mở đầu phù hợp",
       "Tăng điểm căng và chi tiết thật",
       "Cho tôi quan điểm mạnh hơn",
       "Viết lại đúng giọng của tôi",
     ],
     body: [
+      "Chia nội dung thành các mốc thời gian",
       "Sắp xếp theo trải nghiệm → mâu thuẫn → bài học",
       "Chỉ ra và sửa những đoạn còn chung chung",
       "Làm lời thoại tự nhiên hơn",
     ],
     cta: [
+      "Căn CTA theo thời lượng còn lại",
       "Mở một cuộc trò chuyện ở bình luận",
       "Tạo CTA để người xem muốn lưu lại",
       "Dẫn tự nhiên sang phần tiếp theo",
@@ -134,7 +138,14 @@ function TextSection({
   onSettings: () => void;
 }) {
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const words = value.trim().split(/\s+/).filter(Boolean).length;
+  const words = countScriptWords([value]);
+  const timelineSegments = parseTimelineText(value);
+  const updateTimelineSegment = (index: number, text: string) => {
+    onChange(serializeTimelineText(timelineSegments.map((segment, segmentIndex) =>
+      segmentIndex === index ? { ...segment, text } : segment,
+    )));
+  };
+  const textareaClass = "w-full resize-y rounded-2xl border border-[#E8DED8] bg-[#FFFDF9] px-4 py-3 text-sm font-normal leading-6 text-[#31583A] outline-none transition placeholder:text-[#A3AAA1] focus:border-[#72B65D] focus:ring-2 focus:ring-[#DDEED6]";
 
   return (
     <section className="rounded-[22px] border border-[#DDEBD6] bg-white p-4 sm:p-5">
@@ -155,14 +166,68 @@ function TextSection({
           <Sparkles size={14} /> <span className="hidden sm:inline">Nhờ Emsen</span>
         </button>
       </div>
-      <textarea
-        aria-label={title}
-        className="mt-3 w-full resize-y rounded-2xl border border-[#E8DED8] bg-[#FFFDF9] px-4 py-3 text-sm font-normal leading-6 text-[#31583A] outline-none transition placeholder:text-[#A3AAA1] focus:border-[#72B65D] focus:ring-2 focus:ring-[#DDEED6]"
-        rows={rows}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      {timelineSegments.length > 0 ? (
+        <div className="mt-3 overflow-hidden rounded-2xl border border-[#D8E8D2] bg-gradient-to-br from-[#F9FCF7] via-white to-[#FBF7FC]">
+          <div className="flex items-center justify-between gap-3 border-b border-[#E2ECE0] bg-white/75 px-3.5 py-2.5">
+            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#537858]">
+              <Clock3 size={13} /> Nhịp theo thời gian
+            </p>
+            <span className="rounded-full bg-[#F1E8F0] px-2.5 py-1 text-[10px] font-bold tabular-nums text-[#815477]">
+              {timelineSegments.length} {timelineSegments.length === 1 ? "mốc" : "mốc nội dung"}
+            </span>
+          </div>
+          <div className="space-y-2.5 p-3">
+            {timelineSegments.map((segment, index) => (
+              <div className="grid gap-2 rounded-2xl border border-[#E2E9DE] bg-white p-2.5 shadow-[0_5px_16px_rgba(58,94,60,0.06)] sm:grid-cols-[112px_minmax(0,1fr)]" key={`${segment.label}-${index}`}>
+                <div className="flex items-start">
+                  <span className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#3E7B49] to-[#70AD5C] px-2.5 py-2 text-[11px] font-black tabular-nums text-white shadow-[0_5px_12px_rgba(62,123,73,0.22)]">
+                    <Clock3 size={12} strokeWidth={2.5} /> {segment.label}
+                  </span>
+                </div>
+                <textarea
+                  aria-label={`${title} ${segment.label}`}
+                  className="min-h-[58px] w-full resize-y rounded-xl border border-transparent bg-[#FFFDF9] px-3 py-2 text-sm font-normal leading-6 text-[#31583A] outline-none transition hover:border-[#E8DED8] focus:border-[#A9C99D] focus:bg-white focus:ring-2 focus:ring-[#E3F0DE]"
+                  rows={section === "body" ? 2 : 1}
+                  value={segment.text}
+                  placeholder={placeholder}
+                  onChange={(event) => updateTimelineSegment(index, event.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+          <details className="group border-t border-[#E2ECE0] bg-white/70">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 text-[10px] font-bold text-[#748A74]">
+              Chỉnh trực tiếp lời thoại và mốc thời gian
+              <ChevronDown size={13} className="transition group-open:rotate-180" />
+            </summary>
+            <div className="px-3 pb-3">
+              <textarea
+                aria-label={`${title} và mốc thời gian`}
+                className={textareaClass}
+                rows={rows}
+                value={value}
+                placeholder={placeholder}
+                onChange={(event) => onChange(event.target.value)}
+              />
+              <p className="mt-1.5 text-[10px] text-[#879487]">Ví dụ định dạng: [0:00–0:05] Lời thoại trong khoảng thời gian này. Mốc thực tế có thể dài hoặc ngắn hơn.</p>
+            </div>
+          </details>
+        </div>
+      ) : (
+        <>
+          <textarea
+            aria-label={title}
+            className={`mt-3 ${textareaClass}`}
+            rows={rows}
+            value={value}
+            placeholder={placeholder}
+            onChange={(event) => onChange(event.target.value)}
+          />
+          {value.trim() ? (
+            <p className="mt-2 flex items-center gap-1.5 text-[10px] text-[#879487]"><Clock3 size={12} /> Kịch bản cũ chưa có mốc thời gian; bạn có thể nhờ Emsen chia lại theo thời lượng.</p>
+          ) : null}
+        </>
+      )}
       {assistantOpen && <AiPrompt section={section} busy={busy} enabled={aiConfigured} onAsk={(prompt) => onAssist(section, prompt)} onClose={() => setAssistantOpen(false)} onSettings={onSettings} />}
     </section>
   );
@@ -270,6 +335,9 @@ export function ScriptEditor({
   const wordCount = countScriptWords(primarySections);
   const wordRange = recommendedScriptWords(draft.settings.targetDurationSeconds);
   const wordCountState = wordCount < wordRange.min ? "short" : wordCount > wordRange.max ? "long" : "balanced";
+  const ctaTimeline = parseTimelineText(draft.content.cta);
+  const timelineEndSeconds = ctaTimeline.at(-1)?.endSeconds;
+  const timelineNeedsUpdate = timelineEndSeconds !== undefined && timelineEndSeconds !== draft.settings.targetDurationSeconds;
   const storyboardDuration = draft.content.storyboard.reduce((total, frame) => total + frame.durationSeconds, 0);
   const planSync = draft.planReference?.sync;
   const appliedSyncLabels = planSync?.appliedFields.map((field) => scriptSyncFieldLabels[field]) ?? [];
@@ -336,6 +404,7 @@ export function ScriptEditor({
               </div>
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#DCEAD6]"><span className="block h-full rounded-full bg-[#72B65D] transition-all" style={{ width: `${(completedSections / 3) * 100}%` }} /></div>
               <p className={`mt-1.5 text-[10px] ${wordCountState === "balanced" ? "text-[#3F8240]" : "text-[#879487]"}`}>{wordCountState === "balanced" ? "Độ dài đang phù hợp với thời lượng." : wordCountState === "short" ? `Có thể phát triển thêm để đạt khoảng ${wordRange.min}–${wordRange.max} từ.` : `Có thể rút gọn để gần khoảng ${wordRange.min}–${wordRange.max} từ.`}</p>
+              {timelineNeedsUpdate ? <p className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-[#A06F3F]"><Clock3 size={11} /> Timeline đang kết thúc ở {timelineEndSeconds}s, khác mục tiêu {draft.settings.targetDurationSeconds}s. Hãy nhờ Emsen chia lại mốc thời gian.</p> : null}
             </div>
           </section>
 

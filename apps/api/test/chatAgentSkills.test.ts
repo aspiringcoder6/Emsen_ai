@@ -84,9 +84,9 @@ test("chat executes Creator DNA, Direction and Content Plan work through registe
       return {
         model: "agent-skill-test-model",
         output: {
-          hook: "Hook gốc của kịch bản",
-          body: "Một nội dung hữu ích cho người mới bắt đầu.",
-          cta: "Bạn sẽ thử điều gì đầu tiên?",
+          hook: "[0:00–0:06] Bạn không cần chờ đến khi thật giỏi mới bắt đầu làm content, vì chính video đầu tiên sẽ dạy bạn điều quan trọng nhất.",
+          body: "[0:06–0:22] Ngày đầu cầm điện thoại, mình cũng nghĩ phải có ánh sáng đẹp, máy quay tốt và một lời thoại hoàn hảo thì mới xứng đáng đăng. Mình quay đi quay lại rất nhiều lần, nhưng càng sửa thì câu chữ càng cứng và mình càng sợ người khác đánh giá.\n[0:22–0:43] Chỉ khi đăng một phiên bản chưa hoàn hảo, mình mới nhận ra phản hồi thật hữu ích hơn phỏng đoán. Từ đó, mình đổi mục tiêu: mỗi video không cần chứng minh mình giỏi, nó chỉ cần giúp một người hiểu thêm một điều cụ thể.\n[0:43–0:54] Nếu bạn đang mắc kẹt, hãy chọn một ý nhỏ, nói bằng lời của mình và xem video đầu như một lần luyện tập công khai.",
+          cta: "[0:54–1:00] Bạn đang trì hoãn video nào vì muốn nó hoàn hảo? Kể mình nghe điều khiến bạn chưa dám đăng nhé.",
           storyboard: [0, 1].map((index) => ({
             title: `Cảnh ${index + 1}`,
             visual: "Người nói trước máy quay",
@@ -263,7 +263,7 @@ test("chat executes Creator DNA, Direction and Content Plan work through registe
     const createdWorkspace = (await (await fetch(scriptsUrl, { headers: { Cookie: cookie } })).json()) as ScriptWorkspaceDto;
     const created = createdWorkspace.scripts.find((script) => script.id === scriptId);
     assert.equal(created?.status, "draft");
-    assert.equal(created?.content.hook, "Hook gốc của kịch bản");
+    assert.match(created?.content.hook ?? "", /^\[0:00–0:06\]/);
 
     const updateScriptResponse = await request({
       content: "Sửa hook của kịch bản “Bắt đầu làm content” cho gần gũi hơn",
@@ -275,7 +275,7 @@ test("chat executes Creator DNA, Direction and Content Plan work through registe
     assert.equal(updateScriptChat.assistantMessage.skillRuns[0]?.targetVersion, 2);
     const updatedWorkspace = (await (await fetch(scriptsUrl, { headers: { Cookie: cookie } })).json()) as ScriptWorkspaceDto;
     const updated = updatedWorkspace.scripts.find((script) => script.id === scriptId);
-    assert.equal(updated?.content.hook, "Hook mới gần gũi và cụ thể hơn");
+    assert.equal(updated?.content.hook, "[0:00–0:06] Hook mới gần gũi và cụ thể hơn");
     assert.equal(updated?.content.body, created?.content.body);
     assert.equal(updated?.status, "draft");
 

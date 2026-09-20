@@ -1,3 +1,5 @@
+import { stripTimelineTimestamps } from "./scriptTimeline";
+
 export const scriptDurationPresets = [15, 30, 45, 60] as const;
 
 export function recommendedScriptWords(durationSeconds: number) {
@@ -31,5 +33,5 @@ export function recommendedScriptWords(durationSeconds: number) {
 }
 
 export function countScriptWords(parts: string[]) {
-  return parts.join(" ").trim().split(/\s+/).filter(Boolean).length;
+  return parts.map(stripTimelineTimestamps).join(" ").trim().split(/\s+/).filter(Boolean).length;
 }

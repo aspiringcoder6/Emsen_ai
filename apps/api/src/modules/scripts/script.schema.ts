@@ -272,9 +272,18 @@ export function parseScriptAssist(value: unknown): ScriptAssistRequestDto {
 export const generatedScriptResponseSchema = {
   type: "object",
   properties: {
-    hook: { type: "string" },
-    body: { type: "string" },
-    cta: { type: "string" },
+    hook: {
+      description: "Lời thoại hook đầy đủ, bắt đầu bằng timestamp linh hoạt do nội dung quyết định.",
+      type: "string",
+    },
+    body: {
+      description: "Lời thoại nội dung chính đã phát triển đầy đủ, chia thành nhiều dòng timestamp theo các nhịp có ý nghĩa.",
+      type: "string",
+    },
+    cta: {
+      description: "Lời thoại CTA tự nhiên, bắt đầu bằng timestamp và kết thúc đúng tổng thời lượng video.",
+      type: "string",
+    },
     storyboard: {
       type: "array",
       minItems: 2,

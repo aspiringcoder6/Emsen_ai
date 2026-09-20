@@ -21,9 +21,9 @@ const scriptConcepts = ["pain", "curiosity", "contrarian", "story", "confession"
   fitScore: 80 + index,
 }));
 const generatedScript = {
-  hook: "Tôi đã quay 12 lần nhưng chưa đăng lần nào.",
-  body: "Tôi cứ chờ một phiên bản hoàn hảo. Mâu thuẫn là càng chờ, tôi càng không học được gì. Khi đăng bản chưa hoàn hảo đầu tiên, tôi nhận ra phản hồi thật hữu ích hơn mọi phỏng đoán. Góc nhìn của tôi bây giờ là: video đầu tiên không cần chứng minh năng lực, nó chỉ cần bắt đầu một cuộc đối thoại.",
-  cta: "Bạn đang giữ video nào trong bản nháp? Kể mình nghe một lý do nhé.",
+  hook: "[0:00–0:04] Tôi đã quay 12 lần nhưng chưa đăng lần nào.",
+  body: "[0:04–0:14] Tôi cứ chờ một phiên bản hoàn hảo. Mâu thuẫn là càng chờ, tôi càng không học được gì.\n[0:14–0:25] Khi đăng bản chưa hoàn hảo đầu tiên, tôi nhận ra phản hồi thật hữu ích hơn mọi phỏng đoán. Góc nhìn của tôi bây giờ là: video đầu tiên không cần chứng minh năng lực, nó chỉ cần bắt đầu một cuộc đối thoại.",
+  cta: "[0:25–0:30] Bạn đang giữ video nào trong bản nháp? Kể mình nghe một lý do nhé.",
   storyboard: [
     {
       title: "Bản nháp thứ 12",
