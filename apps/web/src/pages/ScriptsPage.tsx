@@ -40,7 +40,7 @@ function updateRequest(script: ScriptDocumentDto): UpdateScriptRequestDto {
   };
 }
 
-export function ScriptsPage({ active, onSettings }: { active: boolean; onSettings: () => void }) {
+export function ScriptsPage({ active, onSettings, onStartVideo }: { active: boolean; onSettings: () => void; onStartVideo: (scriptId: string) => void }) {
   const [workspace, setWorkspace] = useState<ScriptWorkspaceDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -258,6 +258,7 @@ export function ScriptsPage({ active, onSettings }: { active: boolean; onSetting
         onDelete={() => setDeleteCandidate(draft)}
         onAssist={(section, prompt) => void askAi(section, prompt)}
         onSettings={onSettings}
+        onStartVideo={() => onStartVideo(draft.id)}
       />
     ) : (
       <section className="mx-auto max-w-[1280px] space-y-4">

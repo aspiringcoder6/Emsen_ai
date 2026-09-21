@@ -259,6 +259,7 @@ export function ScriptEditor({
   onDelete,
   onAssist,
   onSettings,
+  onStartVideo,
 }: {
   draft: ScriptDocumentDto;
   dirty: boolean;
@@ -273,6 +274,7 @@ export function ScriptEditor({
   onDelete: () => void;
   onAssist: (section: ScriptAssistSection, prompt: string) => void;
   onSettings: () => void;
+  onStartVideo: () => void;
 }) {
   const [storyboardAssistantOpen, setStoryboardAssistantOpen] = useState(false);
   const [exportNotice, setExportNotice] = useState("");
@@ -352,6 +354,8 @@ export function ScriptEditor({
             <input value={draft.title} maxLength={250} placeholder="Tên kịch bản" onChange={(event) => applyChange({ ...draft, title: event.target.value })} className="w-full bg-transparent text-base font-bold text-[#284D31] outline-none sm:text-xl" />
             <p className="mt-0.5 truncate text-[11px] text-[#748A74]">{draft.settings.platform || "Chưa chọn nền tảng"} · {formatScriptDate(draft.settings.scheduledFor)} · {wordCount} từ / gợi ý {wordRange.min}–{wordRange.max}</p>
           </div>
+
+          <button type="button" disabled={dirty || saving} onClick={onStartVideo} title={dirty ? "Hãy lưu kịch bản trước khi tạo dự án video" : "Tạo dự án dựng từ kịch bản này"} className="inline-flex items-center gap-2 rounded-xl border border-[#C8DBC1] bg-[#F4FAF0] px-3 py-2.5 text-xs font-bold text-[#3F8240] disabled:cursor-not-allowed disabled:opacity-45"><Film size={15} /> <span className="hidden sm:inline">Dựng video</span></button>
 
           <details className="relative">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-[#DDE8D6] bg-white px-3 py-2.5 text-xs font-bold text-[#31583A]"><Download size={15} /> Xuất <ChevronDown size={13} /></summary>

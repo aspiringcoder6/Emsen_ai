@@ -9,6 +9,7 @@ import { directionRouter } from "./modules/direction/direction.routes.js";
 import { contentPlanRouter } from "./modules/content-plan/contentPlan.routes.js";
 import { aiKeyRouter } from "./modules/ai/aiKey.routes.js";
 import { scriptRouter } from "./modules/scripts/script.routes.js";
+import { videoRouter } from "./modules/video/video.routes.js";
 import { errorHandler, HttpError, notFoundHandler } from "./shared/http.js";
 
 function isAllowedOrigin(origin: string) {
@@ -77,6 +78,7 @@ export function createApp() {
   app.use("/api/direction", directionRouter);
   app.use("/api/content-plan", contentPlanRouter);
   app.use("/api/scripts", scriptRouter);
+  app.use("/api/video", videoRouter);
   app.use("/api/settings/ai-key", aiKeyRouter);
 
   app.use(notFoundHandler);

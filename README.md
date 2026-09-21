@@ -40,6 +40,11 @@ Web mặc định ở `http://localhost:5173`, API health check ở
 `GEMINI_API_KEY` chỉ được đọc ở backend và không được gửi xuống trình duyệt.
 Model mặc định là `gemini-3.5-flash-lite`; có thể đổi bằng `GEMINI_MODEL`.
 
+Video Studio dùng MinIO khi chạy local. `docker compose` tự tạo bucket riêng tư
+`creatorflow-media`; video được tải thẳng từ trình duyệt bằng URL có thời hạn,
+không đi qua bộ nhớ API. Khi deploy, cấu hình nhóm biến `MEDIA_STORAGE_*` trong
+`.env.example` bằng một kho S3-compatible bên ngoài Render.
+
 ## Trạng thái hiện tại
 
 - Đăng ký, đăng nhập, đăng xuất và khôi phục phiên qua cookie `HttpOnly`.
@@ -53,6 +58,15 @@ Model mặc định là `gemini-3.5-flash-lite`; có thể đổi bằng `GEMINI
   ghi nhận một kết quả fallback an toàn.
 - Frontend đã nối các route `/api/auth/*` và `/api/creator-dna/*`; không còn lưu
   tài khoản hoặc CreatorDNA trong `localStorage`.
+- Video Studio đã nối kịch bản → dự án video → quay trực tiếp bằng camera/teleprompter
+  hoặc upload 1–10 clip MP4/MOV/WebM (tối đa 2 GB).
+- Worker dùng FFprobe để kiểm tra video dọc và Gemini để tạo transcript tiếng Việt có
+  timestamp; người dùng sửa và duyệt transcript trước bước Smart Cut.
+
+Khi deploy, `apps/worker` phải chạy như một Background Worker riêng với lệnh
+`npm run start --workspace @creator-flow/worker`. Worker dùng chung `DATABASE_URL`,
+`AI_KEY_ENCRYPTION_KEY`, `GEMINI_*` và `MEDIA_STORAGE_*` với API. Camera trên trình
+duyệt yêu cầu domain HTTPS (Render đã cung cấp HTTPS).
 
 ## Kiểm tra trước khi commit
 

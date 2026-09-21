@@ -13,6 +13,8 @@
     "test:content-plan": "node --import tsx --test test/contentPlan.test.ts",
     "test:phone-number": "node --import tsx --test test/phoneNumber.test.ts",
     "test:scripts": "node --import tsx --test test/script.test.ts",
+    "test:video": "node --import tsx --test test/video.test.ts",
+    "test:video-integration": "node --import tsx --test test/video.integration.test.ts",
     "test:agent-skills": "node --import tsx --test test/agentSkills.test.ts",
     "test:agent-integration": "node --import tsx --test test/chatAgentSkills.test.ts"
   },
