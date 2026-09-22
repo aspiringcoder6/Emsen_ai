@@ -76,7 +76,7 @@ function fallbackEvaluation(request: EvaluationRequest): EvaluationOutput {
     return {
       headline: `${request.displayName}, Creator DNA của bạn đã có điểm bắt đầu.`,
       note: willOnboard
-        ? "Hoàn thành 6 câu hỏi mở đầu sẽ giúp emsen đánh giá dựa trên dữ liệu thật thay vì suy đoán."
+        ? "Hoàn thành 5 câu hỏi mở đầu sẽ giúp Emsen đánh giá dựa trên dữ liệu thật thay vì suy đoán."
         : "Bạn có thể bỏ qua lúc này; emsen sẽ tích lũy tín hiệu dần từ các tương tác sau.",
       readiness: willOnboard ? 18 : 10,
       signals: [
@@ -96,7 +96,7 @@ function fallbackEvaluation(request: EvaluationRequest): EvaluationOutput {
   return {
     headline: `${profile.displayName} đang xây nội dung ${profile.niche.toLocaleLowerCase("vi-VN")} với một điểm xuất phát rõ ràng.`,
     note:
-      "Đánh giá fallback được tạo từ 6 câu trả lời đã lưu. emsen sẽ tiếp tục làm giàu Creator DNA qua câu chuyện và phản hồi thực tế.",
+      "Đánh giá fallback được tạo từ 5 câu trả lời đã lưu. Emsen sẽ tiếp tục làm giàu Creator DNA qua câu chuyện và phản hồi thực tế.",
     readiness: Math.min(64 + optionalSignals * 12, 100),
     signals: [
       `Nền tảng ưu tiên: ${profile.platforms.join(" · ")}`,

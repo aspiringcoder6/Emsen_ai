@@ -14,13 +14,15 @@ type CreatorDnaIntroProps = {
   onContinue?: () => void;
   onSkip: () => void;
   onStart: () => void;
+  required?: boolean;
 };
 
 const onboardingPhases = [
   { label: "Danh tính", description: "Tên và cách xưng hô" },
-  { label: "Nội dung", description: "Lĩnh vực và nền tảng" },
-  { label: "Chất giọng", description: "Phong cách và khán giả" },
-  { label: "Ranh giới", description: "Những điều cần tránh" },
+  { label: "Lĩnh vực", description: "Điều bạn làm hoặc quan tâm" },
+  { label: "Nền tảng", description: "Nơi bạn muốn xuất hiện" },
+  { label: "Chất giọng", description: "Phong cách muốn thể hiện" },
+  { label: "Khán giả", description: "Người bạn muốn trò chuyện" },
 ];
 
 export function CreatorDnaIntro({
@@ -29,6 +31,7 @@ export function CreatorDnaIntro({
   onContinue,
   onSkip,
   onStart,
+  required = false,
 }: CreatorDnaIntroProps) {
   return (
     <div className="space-y-5">
@@ -53,12 +56,12 @@ export function CreatorDnaIntro({
               <h2 className="max-w-2xl text-3xl font-bold leading-tight tracking-[-0.04em] sm:text-4xl">
                 {deferred
                   ? "Khi nào sẵn sàng, mình bắt đầu nhé."
-                  : "Cho mình biết một chút về bạn nhé."}
+                  : "Xin chào, mình là Emsen!"}
               </h2>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-[#DCEED9] sm:text-base sm:leading-7">
                 {deferred
                   ? "Bạn đã chọn để bước này lại sau. emsen vẫn hoạt động bình thường và bạn có thể quay lại xây Creator DNA bất cứ lúc nào."
-                  : "Chỉ khoảng 3 phút để Emsen có đủ điểm xuất phát, từ đó viết nội dung đúng phong cách và cá tính riêng của bạn hơn, hãy giúp Emsen hiểu bạn hơn nhé."}
+                  : "Mình sẽ đồng hành từ một ý tưởng nhỏ đến kịch bản TikTok rõ ràng, cuốn hút, rồi giúp bạn hình dung cách quay và hoàn thiện video. Trước khi bắt đầu, mình muốn hiểu bạn một chút đã. Mình cùng làm quen nhé?"}
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
                 <button
@@ -72,13 +75,15 @@ export function CreatorDnaIntro({
                     size={17}
                   />
                 </button>
-                <button
-                  className="inline-flex h-12 items-center rounded-2xl border border-white/20 bg-white/5 px-5 text-sm font-bold text-white transition hover:bg-white/10"
-                  onClick={deferred ? onContinue : onSkip}
-                  type="button"
-                >
-                  {deferred ? "Tiếp tục sử dụng emsen" : "Để mình làm sau"}
-                </button>
+                {!required ? (
+                  <button
+                    className="inline-flex h-12 items-center rounded-2xl border border-white/20 bg-white/5 px-5 text-sm font-bold text-white transition hover:bg-white/10"
+                    onClick={deferred ? onContinue : onSkip}
+                    type="button"
+                  >
+                    {deferred ? "Tiếp tục sử dụng emsen" : "Để mình làm sau"}
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -122,7 +127,7 @@ export function CreatorDnaIntro({
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#46A82D]">
                 NHỮNG CÂU HỎI ĐƠN GIẢN NHƯNG TRỌNG TÂM
               </p>
-              <h3 className="mt-1 text-xl font-bold text-[#284D31]">6 câu hỏi nhỏ, 4 tín hiệu lớn</h3>
+              <h3 className="mt-1 text-xl font-bold text-[#284D31]">5 câu hỏi nhỏ, 5 tín hiệu quan trọng</h3>
             </div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#EAF6E4] px-3 py-1.5 text-xs font-bold text-[#46A82D]">
               <Clock3 size={14} />
@@ -151,10 +156,13 @@ export function CreatorDnaIntro({
           <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#E5F5E4] text-[#3F7E49]">
             <HeartHandshake size={21} />
           </div>
-          <h3 className="mt-5 text-lg font-bold text-[#284D31]">Không bắt buộc</h3>
+          <h3 className="mt-5 text-lg font-bold text-[#284D31]">
+            {required ? "Bước làm quen ngắn" : "Bạn có thể làm sau"}
+          </h3>
           <p className="mt-2 text-sm leading-6 text-[#71816E]">
-            Bạn có thể bỏ qua toàn bộ hoặc một số câu. emsen sẽ tiếp tục tìm hiểu
-            bạn một cách tự nhiên trong quá trình cùng làm nội dung.
+            {required
+              ? "Tài khoản mới hoàn thành bước này trước khi vào Không gian làm việc. Bạn vẫn có thể chỉnh hồ sơ bất cứ lúc nào sau đó."
+              : "Bạn có thể bỏ qua toàn bộ hoặc một số câu. Emsen sẽ tiếp tục tìm hiểu bạn một cách tự nhiên trong quá trình cùng làm nội dung."}
           </p>
         </aside>
       </section>

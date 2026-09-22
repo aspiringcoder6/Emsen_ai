@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EmsenAvatar } from "../../components/branding/EmsenAvatar";
+import { AiProgressStatus } from "../../components/feedback/AiProgressStatus";
 import { EmsenMark } from "../../components/branding/EmsenMark";
 import { getChat, sendChatMessage } from "./chatApi";
 import {
@@ -426,12 +427,11 @@ export function ChatAssistant({
                 ),
               )}
               {sending ? (
-                <div className="flex items-center gap-3 text-xs font-semibold text-[#829782]">
-                  <div className="relative grid h-9 w-9 place-items-center rounded-xl bg-[#F3FAEE]">
-                    <EmsenAvatar emotion="wonder" alt="Emsen đang suy nghĩ" className="h-10 w-10" />
-                    <LoaderCircle className="absolute -bottom-1 -right-1 animate-spin rounded-full bg-white p-0.5 text-[#46A82D]" size={15} />
+                <div className="flex items-start gap-3">
+                  <EmsenAvatar emotion="wonder" alt="Emsen đang suy nghĩ" className="h-10 w-10 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <AiProgressStatus compact label="Emsen đang xem và hoàn thiện câu trả lời" />
                   </div>
-                  emsen đang xem yêu cầu của bạn…
                 </div>
               ) : null}
             </div>

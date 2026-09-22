@@ -1,7 +1,11 @@
 import {
   ArrowRight,
+  CalendarDays,
   Check,
+  Clapperboard,
+  Compass,
   Dna,
+  FilePenLine,
   PencilLine,
   ShieldCheck,
   Sparkles,
@@ -82,8 +86,9 @@ export function CreatorDnaComplete({
               Xong rồi! Mình bắt đầu hiểu bạn hơn rồi.
             </h2>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-[#DCEED9] sm:text-base sm:leading-7">
-              Bạn không cần khai báo mọi thứ ngay từ đầu. Emsen sẽ tiếp tục học cách bạn
-              nghĩ, viết và phản hồi trong những lần ta cùng tạo nội dung tiếp theo.
+              Những thông tin này giúp mình bắt đầu viết sát với bạn hơn. Trong quá trình
+              làm việc, mình vẫn sẽ tiếp tục học từ những gì bạn thích, chỉnh sửa hoặc muốn
+              giữ lại.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <button
@@ -91,7 +96,7 @@ export function CreatorDnaComplete({
                 onClick={onStartCreating}
                 type="button"
               >
-                Xây dựng định hướng kênh
+                Bắt đầu tạo nội dung
                 <ArrowRight className="transition-transform group-hover:translate-x-0.5" size={17} />
               </button>
               <button
@@ -130,6 +135,54 @@ export function CreatorDnaComplete({
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-[#DDEBD6] bg-white p-5 shadow-[0_14px_40px_rgba(40,77,49,0.05)] sm:p-7">
+        <p className="text-xs font-bold uppercase tracking-[0.15em] text-[#46A82D]">
+          Từ ý tưởng đến video cùng Emsen
+        </p>
+        <h3 className="mt-2 text-xl font-bold text-[#284D31]">
+          Đây là hành trình bạn sẽ đi trong ứng dụng
+        </h3>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-[#748A74]">
+          Mỗi bước đều tạo một bản nháp để bạn xem, giữ lại phần mình thích và quyết định
+          trước khi đi tiếp.
+        </p>
+        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              description: "Chốt mục tiêu, định vị, khán giả và các trụ cột nội dung.",
+              icon: Compass,
+              label: "Định hướng kênh",
+            },
+            {
+              description: "Sắp ý tưởng vào lịch phù hợp với thời gian và nhịp làm việc.",
+              icon: CalendarDays,
+              label: "Kế hoạch nội dung",
+            },
+            {
+              description: "Phát triển Hook, nội dung và CTA; chỉnh đúng phần bạn cho phép.",
+              icon: FilePenLine,
+              label: "Hoàn thiện kịch bản",
+            },
+            {
+              description: "Sau khi chốt lời thoại, chuyển thành cảnh quay rồi bắt tay làm video.",
+              icon: Clapperboard,
+              label: "Storyboard & video",
+            },
+          ].map((step, index) => (
+            <div className="rounded-2xl border border-[#E2EDD9] bg-[#F8FBF5] p-4" key={step.label}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#EAF6E4] text-[#3F8240]">
+                  <step.icon size={19} />
+                </span>
+                <span className="text-xs font-black text-[#9AA997]">0{index + 1}</span>
+              </div>
+              <p className="mt-4 text-sm font-bold text-[#284D31]">{step.label}</p>
+              <p className="mt-1.5 text-xs leading-5 text-[#748A74]">{step.description}</p>
+            </div>
+          ))}
         </div>
       </section>
 

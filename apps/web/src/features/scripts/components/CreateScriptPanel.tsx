@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { EmsenAvatar } from "../../../components/branding/EmsenAvatar";
+import { AiProgressStatus } from "../../../components/feedback/AiProgressStatus";
 import { brainstormScript } from "../scriptApi";
 import { formatScriptDate } from "../scriptConfig";
 import { recommendedScriptWords, scriptDurationPresets } from "../scriptDuration";
@@ -24,11 +25,14 @@ import { recommendedScriptWords, scriptDurationPresets } from "../scriptDuration
 const inputClass = "mt-2 w-full rounded-xl border border-[#E6D4CE] bg-white px-3 py-2.5 text-sm font-normal text-[#31583A] outline-none focus:border-[#72B65D] focus:ring-2 focus:ring-[#DDEED6]";
 
 const ctaStyles = [
-  "Theo mục tiêu nội dung",
-  "Mở hội thoại",
-  "Khuyến khích lưu lại",
-  "Dẫn sang phần tiếp theo",
-  "Xây uy tín",
+  "Bình luận / chia sẻ quan điểm",
+  "Theo dõi để xem thêm nội dung",
+  "Lưu lại để xem sau",
+  "Chia sẻ cho người khác",
+  "Xem phần / video tiếp theo",
+  "Inbox hoặc tìm hiểu thêm",
+  "Click link / đăng ký / mua hàng",
+  "Không cần CTA trực tiếp",
 ];
 
 export function CreateScriptPanel({
@@ -226,6 +230,11 @@ export function CreateScriptPanel({
             <button type="button" disabled={!validSource || !validDuration || brainstorming} onClick={() => void askForConcepts()} className="inline-flex items-center gap-2 rounded-xl bg-[#31583A] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{brainstorming ? <LoaderCircle size={15} className="animate-spin" /> : activeResult ? <RefreshCw size={15} /> : <Sparkles size={15} />}{brainstorming ? "Đang mở các hướng…" : activeResult ? "Gợi ý lại 6 góc" : "Gợi ý 6 góc triển khai"}</button>
             <span className="text-[11px] text-[#748A74]">Bạn chọn hướng phù hợp, Emsen mới viết bản đầy đủ.</span>
           </div>
+          {brainstorming ? (
+            <div className="mt-4">
+              <AiProgressStatus label="Emsen đang mở các hướng triển khai" />
+            </div>
+          ) : null}
           {brainstormError && <p role="alert" className="mt-3 rounded-xl bg-[#FFF0EC] p-3 text-xs text-[#9A4B42]">{brainstormError}</p>}
           {brainstormResult && !activeResult && <p className="mt-3 rounded-xl bg-[#FFF7E8] p-3 text-xs text-[#7C6238]">Thông tin đã thay đổi. Hãy để Emsen gợi ý lại để các góc bám đúng nội dung mới.</p>}
 
@@ -249,6 +258,11 @@ export function CreateScriptPanel({
       <div className="mt-5 flex justify-end">
         <button type="button" disabled={!validSource || !validDuration || busy || brainstorming || (useAi && (!aiConfigured || !selectedConcept))} onClick={submit} className="inline-flex items-center gap-2 rounded-xl bg-[#4E8052] px-5 py-3 text-sm font-bold text-white disabled:opacity-40">{busy && <LoaderCircle size={16} className="animate-spin" />}{useAi ? "Phát triển góc đã chọn" : "Mở trang viết"}</button>
       </div>
+      {busy ? (
+        <div className="mt-4">
+          <AiProgressStatus label="Emsen đang phát triển kịch bản đầu tiên" />
+        </div>
+      ) : null}
     </section>
   );
 }

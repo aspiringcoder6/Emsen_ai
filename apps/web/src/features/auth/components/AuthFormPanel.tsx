@@ -113,7 +113,7 @@ export function AuthFormPanel({ onAuthenticate }: AuthFormPanelProps) {
     }
   };
 
-  const completeSignup = async (creatorDna: "start" | "skip") => {
+  const completeSignup = async () => {
     const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
     if (!normalizedPhoneNumber) {
       setPendingSignup(false);
@@ -126,7 +126,7 @@ export function AuthFormPanel({ onAuthenticate }: AuthFormPanelProps) {
     try {
       await onAuthenticate({
         acceptedTerms,
-        creatorDna,
+        creatorDna: "start",
         name: name.trim(),
         password,
         phoneNumber: normalizedPhoneNumber,
@@ -158,8 +158,7 @@ export function AuthFormPanel({ onAuthenticate }: AuthFormPanelProps) {
               setError("");
               setPendingSignup(false);
             }}
-            onSkip={() => void completeSignup("skip")}
-            onStart={() => void completeSignup("start")}
+            onStart={() => void completeSignup()}
           />
         ) : (
           <div className="rounded-[28px] border border-[#D8E8D2] bg-white/90 p-5 shadow-[0_28px_80px_rgba(40,77,49,0.1)] backdrop-blur-xl sm:p-8">

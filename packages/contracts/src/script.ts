@@ -202,10 +202,18 @@ export type ScriptAssistRequestDto = {
   section: ScriptAssistSection;
   instruction: string;
   draft: UpdateScriptRequestDto;
+  referenceAssets?: ScriptReferenceAssetDto[];
+};
+
+export type ScriptReferenceAssetDto = {
+  dataBase64: string;
+  mimeType: string;
+  name: string;
 };
 
 export type ScriptAssistResponseDto = {
   section: ScriptAssistSection;
   patch: Partial<ScriptContentDto>;
   model: string;
+  alternatives?: string[];
 };

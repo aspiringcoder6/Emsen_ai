@@ -93,31 +93,33 @@ test("validates manual and scheduled script creation", () => {
 test("accepts flexible timestamp layouts that cover the selected duration", () => {
   const guide = buildFlexibleTimelineGuide(60);
   assert.equal(guide.targetDurationSeconds, 60);
-  assert.match(guide.note, /Không có tỷ lệ/);
+  assert.match(guide.note, /không có tỷ lệ/i);
 
   const words = Array.from({ length: 104 }, (_, index) => `từ${index + 1}`);
   const content = normalizeScriptTimeline({
-    hook: "0:00-0:04: Một hook đủ cụ thể để người xem dừng lại và muốn nghe tiếp câu chuyện này.",
+    hook: "0:00-0:04: [Nói trực tiếp] Hook cụ thể khiến người xem dừng lại và muốn nghe tiếp câu chuyện này.",
     body: [
-      `[0:04-0:19] ${words.slice(0, 34).join(" ")}`,
-      `[0:19-0:42] ${words.slice(34, 75).join(" ")}`,
-      `[0:42-0:54] ${words.slice(75).join(" ")}`,
+      `[0:04-0:19] [Nói trực tiếp] ${words.slice(0, 34).join(" ")}`,
+      `[0:19-0:42] [Voice-over] ${words.slice(34, 75).join(" ")}`,
+      `[0:42-0:55] [Nói trực tiếp] ${words.slice(75).join(" ")}`,
     ].join("\n"),
-    cta: "[0:54-1:00] Bạn từng gặp điều này chưa, hãy kể trải nghiệm thật của bạn ở phần bình luận nhé.",
+    cta: "[0:55-1:00] [Nói trực tiếp] Bạn từng gặp điều này chưa? Kể mình nghe ở bình luận nhé.",
     storyboard: [],
   });
   assert.match(content.hook, /^\[0:00–0:04\]/);
-  assert.match(content.cta, /^\[0:54–1:00\]/);
+  assert.match(content.cta, /^\[0:55–1:00\]/);
   assert.equal(countSpokenWords(content.body), 104);
   assert.deepEqual(scriptGenerationIssues(content, 60), []);
 
-  const differentButValid = {
+  const invalidHookAndCtaTiming = {
     ...content,
-    hook: "[0:00–0:07] Hook dài hơn vì mở bằng một tình huống cụ thể đủ lời thoại để dẫn vào câu chuyện.",
-    body: `[0:07–0:30] ${words.slice(0, 52).join(" ")}\n[0:30–0:50] ${words.slice(52).join(" ")}`,
-    cta: "[0:50–1:00] Bạn từng gặp điều này chưa, hãy kể trải nghiệm thật của bạn ở phần bình luận nhé.",
+    hook: "[0:00–0:07] [Nói trực tiếp] Hook dài hơn vì mở bằng một tình huống cụ thể đủ lời thoại để dẫn vào câu chuyện.",
+    body: `[0:07–0:30] [Voice-over] ${words.slice(0, 52).join(" ")}\n[0:30–0:50] [Nói trực tiếp] ${words.slice(52).join(" ")}`,
+    cta: "[0:50–1:00] [Nói trực tiếp] Bạn từng gặp điều này chưa, hãy kể trải nghiệm thật của bạn ở phần bình luận nhé.",
   };
-  assert.deepEqual(scriptTimelineIssues(differentButValid, 60), []);
+  const timingIssues = scriptTimelineIssues(invalidHookAndCtaTiming, 60);
+  assert.ok(timingIssues.some((issue) => issue.includes("Hook cần kéo dài 3–5 giây")));
+  assert.ok(timingIssues.some((issue) => issue.includes("CTA cần kéo dài 3–5 giây")));
 });
 
 test("rejects a visibly short script for its selected duration", () => {
@@ -194,6 +196,17 @@ test("syncs untouched plan fields and preserves script edits", () => {
 test("validates the editable script and AI section request", () => {
   assert.deepEqual(parseUpdateScript(validDraft), validDraft);
   assert.equal(parseScriptAssist({ section: "hook", instruction: "Ngắn hơn", draft: validDraft }).section, "hook");
+  const referenced = parseScriptAssist({
+    section: "hook",
+    instruction: "Học nhịp mở đầu từ ảnh này",
+    draft: validDraft,
+    referenceAssets: [{
+      dataBase64: Buffer.from("small-image-fixture").toString("base64"),
+      mimeType: "image/png",
+      name: "hook.png",
+    }],
+  });
+  assert.equal(referenced.referenceAssets?.[0]?.name, "hook.png");
   const legacyFrame = parseStoryboard([{
     id: "legacy-frame",
     title: "Cảnh cũ",
@@ -210,4 +223,10 @@ test("validates the editable script and AI section request", () => {
   assert.throws(() => parseUpdateScript({ ...validDraft, content: { ...validDraft.content, storyboard: [{ ...validDraft.content.storyboard[0], durationSeconds: 9999 }] } }));
   assert.throws(() => parseScriptAssist({ section: "everything", instruction: "Viết lại", draft: validDraft }));
   assert.throws(() => parseScriptAssist({ section: "cta", instruction: "", draft: validDraft }));
+  assert.throws(() => parseScriptAssist({
+    section: "hook",
+    instruction: "Đọc tệp",
+    draft: validDraft,
+    referenceAssets: [{ dataBase64: "dGVzdA==", mimeType: "application/x-msdownload", name: "bad.exe" }],
+  }));
 });

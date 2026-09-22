@@ -18,9 +18,10 @@ type CreatorDnaQuestionCardProps = {
   onChange: (value: AnswerValue) => void;
   onContinue: () => void;
   onSkipQuestion: () => void;
-  onSkipOnboarding: () => void;
+  onSkipOnboarding?: () => void;
   profile: CreatorDnaProfile;
   question: CreatorDnaQuestion;
+  requiredFlow?: boolean;
   totalSteps: number;
   value: AnswerValue;
 };
@@ -39,8 +40,8 @@ const onboardingGuides: Record<CreatorDnaQuestion["id"], OnboardingGuide> = {
   },
   niche: {
     avatar: { activity: "idea" },
-    prompt: "Hãy chọn lĩnh vực gần nhất với nội dung bạn muốn làm. Chưa cần mô tả thật hoàn hảo đâu.",
-    completed: "Mình đã biết chủ đề chính rồi. Đây sẽ là gốc để các gợi ý sau sát với bạn hơn.",
+    prompt: "Bạn có thể chọn nhiều lĩnh vực mình đang làm hoặc thật sự quan tâm. Chưa cần thu hẹp ngay đâu.",
+    completed: "Mình đã ghi nhận những lĩnh vực bạn quan tâm. Đây sẽ là gốc để các gợi ý sau sát hơn.",
   },
   platforms: {
     avatar: { activity: "checklist" },
@@ -54,7 +55,7 @@ const onboardingGuides: Record<CreatorDnaQuestion["id"], OnboardingGuide> = {
   },
   audience: {
     avatar: { emotion: "wonder" },
-    prompt: "Hãy nghĩ đến một người cụ thể mà bạn muốn giúp. Mô tả ngắn gọn như đang kể về họ cho mình nghe nhé.",
+    prompt: "Hãy chọn những nhóm người bạn thường trò chuyện hoặc muốn nội dung hướng đến.",
     completed: "Mình đã hiểu hơn về người mà nội dung của bạn muốn đồng hành cùng.",
   },
   boundaries: {
@@ -85,6 +86,7 @@ export function CreatorDnaQuestionCard({
   onSkipOnboarding,
   profile,
   question,
+  requiredFlow = false,
   totalSteps,
   value,
 }: CreatorDnaQuestionCardProps) {
@@ -92,13 +94,27 @@ export function CreatorDnaQuestionCard({
   const capturedSignals = getCapturedSignals(profile);
   const stringValue = typeof value === "string" ? value : "";
   const arrayValue = Array.isArray(value) ? value : [];
+  const textSelections = question.kind === "multi-text"
+    ? stringValue.split(" · ").map((item) => item.trim()).filter(Boolean)
+    : [];
+  const knownTextSelections = textSelections.filter((item) => question.options?.includes(item));
+  const customTextSelection = textSelections.filter((item) => !question.options?.includes(item)).join(", ");
   const hasCurrentAnswer = Array.isArray(value) ? value.length > 0 : value.trim().length > 0;
+  const isRequired = requiredFlow || question.required;
   const guide = onboardingGuides[question.id];
   const guideMessage = hasCurrentAnswer
     ? `${guide.completed} Mình sẽ đợi bạn bấm “${currentStep === totalSteps - 1 ? "Hoàn tất" : "Tiếp tục"}” khi đã sẵn sàng.`
     : guide.prompt;
 
   const toggleOption = (option: string) => {
+    if (question.kind === "multi-text") {
+      const next = textSelections.includes(option)
+        ? textSelections.filter((item) => item !== option)
+        : [...textSelections, option];
+      onChange(next.join(" · "));
+      return;
+    }
+
     if (!Array.isArray(value)) {
       onChange(option);
       return;
@@ -109,7 +125,7 @@ export function CreatorDnaQuestionCard({
       return;
     }
 
-    if (question.id === "toneTraits" && arrayValue.length >= 3) {
+    if (question.selectionLimit && arrayValue.length >= question.selectionLimit) {
       return;
     }
 
@@ -133,13 +149,19 @@ export function CreatorDnaQuestionCard({
               </p>
             </div>
           </div>
-          <button
-            className="text-xs font-bold text-[#829782] transition hover:text-[#46A82D]"
-            onClick={onSkipOnboarding}
-            type="button"
-          >
-            Để sau
-          </button>
+          {requiredFlow ? (
+            <span className="rounded-full bg-[#EAF6E4] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.11em] text-[#3F8240]">
+              Bước dành cho tài khoản mới
+            </span>
+          ) : (
+            <button
+              className="text-xs font-bold text-[#829782] transition hover:text-[#46A82D]"
+              onClick={onSkipOnboarding}
+              type="button"
+            >
+              Để sau
+            </button>
+          )}
         </div>
         <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#F4E7E3]">
           <div
@@ -154,14 +176,14 @@ export function CreatorDnaQuestionCard({
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${
-                question.required
+                isRequired
                   ? "bg-[#E3F2DB] text-[#46A82D]"
                   : "bg-[#EEF8EF] text-[#3F7E49]"
               }`}
             >
-              {question.required ? "Cần để bắt đầu" : "Khuyến nghị"}
+              {isRequired ? "Cần để bắt đầu" : "Khuyến nghị"}
             </span>
-            {!question.required ? (
+            {!isRequired ? (
               <span className="text-[11px] text-[#94A794]">Bạn có thể bỏ qua câu này</span>
             ) : null}
           </div>
@@ -249,6 +271,44 @@ export function CreatorDnaQuestionCard({
               </div>
             ) : null}
 
+            {question.kind === "multi-text" ? (
+              <>
+                <div className="flex flex-wrap gap-2.5">
+                  {question.options?.map((option) => {
+                    const selected = textSelections.includes(option);
+                    return (
+                      <button
+                        aria-pressed={selected}
+                        className={`rounded-2xl border px-4 py-3 text-sm font-bold transition ${
+                          selected
+                            ? "border-[#46A82D] bg-[#EAF6E4] text-[#46A82D]"
+                            : "border-[#D8E6D2] bg-white text-[#526952] hover:border-[#82C95B] hover:bg-[#F7FBF3]"
+                        }`}
+                        key={option}
+                        onClick={() => toggleOption(option)}
+                        type="button"
+                      >
+                        {selected ? <Check className="mr-1.5 inline" size={14} strokeWidth={3} /> : null}
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 flex items-center gap-3">
+                  <span className="text-xs font-bold text-[#91A38F]">Khác</span>
+                  <input
+                    className="h-12 min-w-0 flex-1 rounded-2xl border border-[#D5E6CF] bg-[#FFFDF8] px-4 text-sm text-[#31583A] outline-none transition placeholder:text-[#9CAF98] focus:border-[#82C95B] focus:bg-white focus:ring-4 focus:ring-[#82C95B]/10"
+                    onChange={(event) => {
+                      const custom = event.target.value.replaceAll(" · ", " ");
+                      onChange([...knownTextSelections, ...(custom ? [custom] : [])].join(" · "));
+                    }}
+                    placeholder={question.placeholder}
+                    value={customTextSelection}
+                  />
+                </div>
+              </>
+            ) : null}
+
             {question.kind === "textarea" ? (
               <textarea
                 autoFocus
@@ -269,7 +329,7 @@ export function CreatorDnaQuestionCard({
               <ArrowLeft size={16} />
               Quay lại
             </button>
-            {!question.required ? (
+            {!isRequired ? (
               <button
                 className="h-11 px-2 text-sm font-bold text-[#829782] transition hover:text-[#46A82D]"
                 onClick={onSkipQuestion}
@@ -310,7 +370,7 @@ export function CreatorDnaQuestionCard({
               <Sparkles size={14} /> Emsen hướng dẫn
             </div>
             <p className="relative mt-2 text-sm leading-6 text-[#526952]">{guideMessage}</p>
-            {!hasCurrentAnswer && question.required ? (
+            {!hasCurrentAnswer && isRequired ? (
               <p className="relative mt-2 text-[11px] font-semibold text-[#A06D43]">
                 Mình sẽ ở đây chờ bạn hoàn thiện câu trả lời này.
               </p>

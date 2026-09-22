@@ -23,6 +23,7 @@ import { CreatorDnaQuestionCard } from "../features/creator-dna/components/Creat
 
 type CreatorDnaPageProps = {
   onStartCreating: () => void;
+  required?: boolean;
 };
 
 type AnswerValue = string | string[];
@@ -31,7 +32,7 @@ function hasAnswer(value: AnswerValue) {
   return Array.isArray(value) ? value.length > 0 : value.trim().length > 0;
 }
 
-export function CreatorDnaPage({ onStartCreating }: CreatorDnaPageProps) {
+export function CreatorDnaPage({ onStartCreating, required = false }: CreatorDnaPageProps) {
   const [state, setState] = useState<CreatorDnaState | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -41,7 +42,15 @@ export function CreatorDnaPage({ onStartCreating }: CreatorDnaPageProps) {
     setLoading(true);
     setError("");
     try {
-      setState(await getCreatorDna());
+      const nextState = await getCreatorDna();
+      setState({
+        ...nextState,
+        status:
+          required && nextState.status !== "completed"
+            ? "in-progress"
+            : nextState.status,
+        currentStep: Math.min(nextState.currentStep, creatorDnaQuestions.length - 1),
+      });
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -184,6 +193,7 @@ export function CreatorDnaPage({ onStartCreating }: CreatorDnaPageProps) {
   };
 
   const skipOnboarding = () => {
+    if (required) return;
     setState((current) =>
       current
         ? {
@@ -275,6 +285,7 @@ export function CreatorDnaPage({ onStartCreating }: CreatorDnaPageProps) {
           insight={state.insight}
           onSkip={skipOnboarding}
           onStart={startOnboarding}
+          required={required}
         />
       </div>
     );
@@ -325,6 +336,7 @@ export function CreatorDnaPage({ onStartCreating }: CreatorDnaPageProps) {
         onSkipQuestion={goToNextQuestion}
         profile={state.profile}
         question={question as CreatorDnaQuestion}
+        requiredFlow={required}
         totalSteps={creatorDnaQuestions.length}
         value={value}
       />

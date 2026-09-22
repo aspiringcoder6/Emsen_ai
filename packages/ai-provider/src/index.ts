@@ -7,6 +7,10 @@ export type AiConversationMessage = {
 
 export type StructuredGenerationRequest = {
   history?: AiConversationMessage[];
+  media?: Array<{
+    dataBase64: string;
+    mimeType: string;
+  }>;
   responseSchema: JsonSchema;
   systemPrompt: string;
   userPrompt: string;
@@ -41,6 +45,10 @@ type GeminiResponse = {
   };
 };
 
+type GeminiPart =
+  | { text: string }
+  | { inlineData: { data: string; mimeType: string } };
+
 export type GeminiAiProviderOptions = {
   apiKey?: string;
   model?: string;
@@ -74,13 +82,24 @@ export class GeminiAiProvider implements AiProvider {
       ...(request.history ?? []),
       { content: request.userPrompt, role: "user" as const },
     ];
-    const contents: Array<{ parts: Array<{ text: string }>; role: "model" | "user" }> = [];
+    const contents: Array<{ parts: GeminiPart[]; role: "model" | "user" }> = [];
     for (const message of conversation) {
       const previous = contents.at(-1);
-      if (previous?.role === message.role) {
-        previous.parts[0]!.text += `\n\n${message.content}`;
+      const previousText = previous?.parts[0];
+      if (previous?.role === message.role && previousText && "text" in previousText) {
+        previousText.text += `\n\n${message.content}`;
       } else {
         contents.push({ parts: [{ text: message.content }], role: message.role });
+      }
+    }
+    if (request.media?.length) {
+      const finalUserMessage = contents.at(-1);
+      if (finalUserMessage?.role === "user") {
+        finalUserMessage.parts.push(
+          ...request.media.map((item) => ({
+            inlineData: { data: item.dataBase64, mimeType: item.mimeType },
+          })),
+        );
       }
     }
 

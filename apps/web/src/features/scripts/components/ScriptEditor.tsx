@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import type {
   ScriptAssistSection,
+  ScriptAssistResponseDto,
   ScriptDocumentDto,
+  ScriptReferenceAssetDto,
   ScriptStoryboardFrameDto,
 } from "@creator-flow/contracts";
 import {
@@ -16,95 +18,260 @@ import {
   FileJson,
   Film,
   FolderKanban,
+  Highlighter,
   Link2,
   LoaderCircle,
+  Mic2,
   Plus,
+  Quote,
   Save,
   Settings2,
   Sparkles,
   Trash2,
+  Upload,
+  Volume2,
   X,
 } from "lucide-react";
 import { EmsenAvatar } from "../../../components/branding/EmsenAvatar";
+import { AiProgressStatus } from "../../../components/feedback/AiProgressStatus";
 import { downloadScript, scriptAsText } from "../scriptExport";
 import { formatScriptDate, scriptStatusConfig, scriptStatuses, scriptSyncFieldLabels } from "../scriptConfig";
 import { countScriptWords, recommendedScriptWords, scriptDurationPresets } from "../scriptDuration";
 import { parseTimelineText, serializeTimelineText } from "../scriptTimeline";
 
 const inputClass = "mt-2 w-full rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2.5 text-sm font-normal leading-6 text-[#31583A] outline-none transition focus:border-[#72B65D] focus:ring-2 focus:ring-[#DDEED6]";
+const storyboardGuideStorageKey = "emsen:storyboard-guide-seen";
+
+const supportedReferenceMedia = new Set([
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+]);
+
+function referenceMimeType(file: File) {
+  if (supportedReferenceMedia.has(file.type)) return file.type;
+  const extension = file.name.split(".").at(-1)?.toLowerCase();
+  if (extension === "mov") return "video/quicktime";
+  if (extension === "mp4") return "video/mp4";
+  if (extension === "webm") return "video/webm";
+  return file.type;
+}
+
+function readFileAsBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Không thể đọc ${file.name}.`));
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function AiPrompt({
   section,
   busy,
   enabled,
+  currentValue,
   onAsk,
+  onApplyAlternative,
   onClose,
   onSettings,
 }: {
   section: ScriptAssistSection;
   busy: boolean;
   enabled: boolean;
-  onAsk: (prompt: string) => void;
+  currentValue?: string;
+  onAsk: (
+    prompt: string,
+    referenceAssets?: ScriptReferenceAssetDto[],
+  ) => Promise<ScriptAssistResponseDto | null>;
+  onApplyAlternative?: (value: string) => void;
   onClose: () => void;
   onSettings: () => void;
 }) {
   const [prompt, setPrompt] = useState("");
+  const [scopeExcerpt, setScopeExcerpt] = useState("");
+  const [referenceOpen, setReferenceOpen] = useState(false);
+  const [referenceText, setReferenceText] = useState("");
+  const [referenceAssets, setReferenceAssets] = useState<ScriptReferenceAssetDto[]>([]);
+  const [referenceError, setReferenceError] = useState("");
+  const [alternatives, setAlternatives] = useState<string[]>([]);
   const suggestions: Record<ScriptAssistSection, string[]> = {
     hook: [
-      "Căn hook theo nhịp mở đầu phù hợp",
-      "Tăng điểm căng và chi tiết thật",
-      "Cho tôi quan điểm mạnh hơn",
-      "Viết lại đúng giọng của tôi",
+      "Rút Hook ngắn hơn",
+      "Mở đầu tự nhiên hơn",
+      "Tăng sự tò mò",
+      "Viết mạnh và trực diện hơn",
+      "Dí dỏm hơn",
+      "Mở bằng một tình huống",
+      "Mở bằng một quan điểm gây chú ý",
     ],
     body: [
-      "Chia nội dung thành các mốc thời gian",
-      "Sắp xếp theo trải nghiệm → mâu thuẫn → bài học",
-      "Chỉ ra và sửa những đoạn còn chung chung",
+      "Giữ phần mình thích và phát triển thêm",
+      "Chỉ ra phần chưa ổn và cùng mình sửa",
+      "Làm nội dung rõ ý và logic hơn",
+      "Thêm chi tiết để câu chuyện thuyết phục hơn",
       "Làm lời thoại tự nhiên hơn",
+      "Rút gọn những phần chưa cần thiết",
     ],
-    cta: [
-      "Căn CTA theo thời lượng còn lại",
-      "Mở một cuộc trò chuyện ở bình luận",
-      "Tạo CTA để người xem muốn lưu lại",
-      "Dẫn tự nhiên sang phần tiếp theo",
-    ],
+    cta: [],
     storyboard: [
       "Mỗi cảnh cần mục đích thị giác rõ",
       "Thêm B-roll và chuyển cảnh giữ chân",
       "Đơn giản hóa để quay bằng điện thoại",
     ],
   };
+  const ctaGoals = [
+    "Bình luận / chia sẻ quan điểm",
+    "Theo dõi để xem thêm nội dung",
+    "Lưu lại để xem sau",
+    "Chia sẻ cho người khác",
+    "Xem phần / video tiếp theo",
+    "Inbox hoặc tìm hiểu thêm",
+    "Click link / đăng ký / mua hàng",
+    "Không cần CTA trực tiếp",
+  ];
+  const sectionLabel = section === "hook" ? "Hook" : section === "body" ? "Nội dung" : section === "cta" ? "CTA" : "Storyboard";
+
+  const addReferenceFiles = async (files: FileList) => {
+    setReferenceError("");
+    const incoming = [...files];
+    const textFiles = incoming.filter((file) => file.type.startsWith("text/") || /\.(md|txt|srt)$/i.test(file.name));
+    const mediaFiles = incoming.filter((file) => !textFiles.includes(file));
+    if (referenceAssets.length + mediaFiles.length > 3) {
+      setReferenceError("Mỗi lượt nhận tối đa 3 ảnh hoặc video tham chiếu.");
+      return;
+    }
+    const totalBytes = referenceAssets.reduce(
+      (total, asset) => total + Math.ceil(asset.dataBase64.length * 0.75),
+      0,
+    ) + mediaFiles.reduce((total, file) => total + file.size, 0);
+    if (totalBytes > 4 * 1024 * 1024) {
+      setReferenceError("Tổng ảnh và video tham chiếu cần nhỏ hơn 4 MB.");
+      return;
+    }
+    const unsupported = mediaFiles.find((file) => !supportedReferenceMedia.has(referenceMimeType(file)));
+    if (unsupported) {
+      setReferenceError(`Chưa hỗ trợ ${unsupported.name}. Hãy dùng ảnh, MP4, MOV, WEBM hoặc tệp TXT/MD/SRT.`);
+      return;
+    }
+    try {
+      const textParts = await Promise.all(textFiles.map((file) => file.text()));
+      if (textParts.length) {
+        setReferenceText((current) => [current, ...textParts].filter(Boolean).join("\n\n").slice(0, 1_800));
+      }
+      const nextAssets = await Promise.all(mediaFiles.map(async (file) => ({
+        dataBase64: await readFileAsBase64(file),
+        mimeType: referenceMimeType(file),
+        name: file.name,
+      })));
+      setReferenceAssets((current) => [...current, ...nextAssets]);
+    } catch (error) {
+      setReferenceError(error instanceof Error ? error.message : "Chưa thể đọc tệp tham chiếu.");
+    }
+  };
+
+  const ask = async () => {
+    const request = [
+      `Chỉ chỉnh phần ${sectionLabel}; giữ nguyên mọi phần khác của kịch bản.`,
+      scopeExcerpt.trim()
+        ? `Phạm vi được phép xử lý:\n${scopeExcerpt.trim()}\nGiữ nguyên nội dung nằm ngoài phạm vi này.`
+        : "Nếu yêu cầu còn mơ hồ, ưu tiên giữ nguyên những ý và câu đã có; chỉ thay đổi tối thiểu cần thiết.",
+      prompt.trim(),
+      referenceText.trim() ? `Mẫu tham chiếu do người dùng cung cấp:\n${referenceText.trim()}` : "",
+    ].filter(Boolean).join("\n\n").slice(0, 3_000);
+    if (!request.trim()) return;
+    const result = await onAsk(request, referenceAssets);
+    setAlternatives(result?.alternatives ?? []);
+  };
+
+  const canAsk = Boolean(
+    prompt.trim() || scopeExcerpt.trim() || referenceText.trim() || referenceAssets.length,
+  );
 
   return (
     <aside className="mt-3 rounded-2xl border border-[#CFE3C8] bg-[#F4FAF0] p-3 sm:p-4">
       <div className="flex items-center gap-3">
         <EmsenAvatar activity="idea" className="h-11 w-11 shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 text-xs font-bold text-[#3F8240]"><Bot size={14} /> Chỉnh cùng Emsen</p>
-          <p className="mt-0.5 truncate text-[11px] text-[#748A74]">Chọn gợi ý nhanh hoặc nói theo cách của bạn.</p>
+          <p className="flex items-center gap-1.5 text-xs font-bold text-[#3F8240]"><Bot size={14} /> {section === "storyboard" ? "Cùng Emsen chia cảnh quay" : "Cùng Emsen hoàn thiện kịch bản nhé"}</p>
+          <p className="mt-0.5 text-[11px] text-[#748A74]">{section === "storyboard" ? "Chọn cách bạn muốn hình dung cảnh quay." : "Bạn muốn giữ lại, thay đổi hay phát triển thêm điều gì ở phiên bản này?"}</p>
         </div>
         <button type="button" onClick={onClose} aria-label="Đóng trợ lý" className="rounded-lg p-1.5 text-[#748A74] hover:bg-white"><X size={15} /></button>
       </div>
 
       {enabled ? (
         <div className="mt-3">
-          <div className="flex flex-wrap gap-1.5">
-            {suggestions[section].map((suggestion) => <button key={suggestion} type="button" onClick={() => setPrompt(suggestion)} className="rounded-full border border-[#D6E5D1] bg-white px-2.5 py-1.5 text-[10px] font-bold text-[#557058] hover:border-[#8ABA7A]">{suggestion}</button>)}
-          </div>
+          {section === "cta" ? (
+            <div>
+              <p className="text-xs font-bold text-[#31583A]">Bạn muốn người xem làm gì sau khi xem video này?</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {ctaGoals.map((goal) => <button key={goal} type="button" onClick={() => setPrompt(`Mục tiêu CTA: ${goal}. Hãy đề xuất 3 cách diễn đạt CTA khác nhau, tự nhiên và phù hợp với nội dung, tone và mạch cảm xúc của video.`)} className={`rounded-full border px-2.5 py-1.5 text-[10px] font-bold ${prompt.includes(`Mục tiêu CTA: ${goal}.`) ? "border-[#72B65D] bg-[#EAF6E4] text-[#31583A]" : "border-[#D6E5D1] bg-white text-[#557058] hover:border-[#8ABA7A]"}`}>{goal}</button>)}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions[section].map((suggestion) => <button key={suggestion} type="button" onClick={() => { setPrompt(suggestion); setAlternatives([]); }} className={`rounded-full border px-2.5 py-1.5 text-[10px] font-bold ${prompt === suggestion ? "border-[#72B65D] bg-[#EAF6E4] text-[#31583A]" : "border-[#D6E5D1] bg-white text-[#557058] hover:border-[#8ABA7A]"}`}>{suggestion}</button>)}
+            </div>
+          )}
+
+          {section === "hook" ? (
+            <div className="mt-3 rounded-xl border border-[#DCE8D7] bg-white p-3">
+              <button type="button" onClick={() => { setReferenceOpen((value) => !value); setPrompt((current) => current || "Viết Hook theo kỹ thuật của mẫu tham chiếu, nhưng giữ nguyên thông điệp và không sao chép nguyên văn."); }} className="flex w-full items-center gap-2 text-left text-xs font-bold text-[#3F8240]"><Quote size={14} /> Viết theo mẫu tham chiếu <ChevronDown className={`ml-auto transition ${referenceOpen ? "rotate-180" : ""}`} size={14} /></button>
+              {referenceOpen ? <div className="mt-3 space-y-2.5 border-t border-[#EDF2EA] pt-3">
+                <textarea value={referenceText} onChange={(event) => setReferenceText(event.target.value.slice(0, 1_800))} rows={3} placeholder="Dán đoạn Hook hoặc kịch bản bạn muốn dùng làm tham chiếu…" className="w-full resize-y rounded-xl border border-[#D9E4D3] px-3 py-2 text-xs leading-5 outline-none focus:border-[#72B65D]" />
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#C8DBC1] px-3 py-2 text-[11px] font-bold text-[#3F8240]"><Upload size={14} /> Tải ảnh, script hoặc video<input hidden multiple type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/quicktime,video/webm,.txt,.md,.srt" onChange={(event) => { if (event.target.files) void addReferenceFiles(event.target.files); event.target.value = ""; }} /></label>
+                  <span className="text-[10px] text-[#879487]">Tối đa 3 tệp, tổng dưới 4 MB</span>
+                </div>
+                {referenceAssets.length ? <div className="flex flex-wrap gap-1.5">{referenceAssets.map((asset, index) => <button key={`${asset.name}-${index}`} type="button" onClick={() => setReferenceAssets((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="inline-flex items-center gap-1 rounded-full bg-[#EEF6EB] px-2.5 py-1 text-[10px] font-bold text-[#557058]">{asset.name}<X size={11} /></button>)}</div> : null}
+                {referenceError ? <p className="text-[11px] font-semibold text-[#A15B55]">{referenceError}</p> : null}
+              </div> : null}
+            </div>
+          ) : null}
+
+          {section !== "storyboard" ? (
+            <details className="mt-3 rounded-xl border border-[#DCE8D7] bg-white">
+              <summary className="cursor-pointer list-none px-3 py-2.5 text-[11px] font-bold text-[#557058]">Phạm vi được phép chỉnh · nên chọn khi chỉ muốn sửa một đoạn</summary>
+              <div className="border-t border-[#EDF2EA] p-3">
+                <textarea value={scopeExcerpt} onChange={(event) => setScopeExcerpt(event.target.value)} rows={2} maxLength={900} placeholder={currentValue ? "Dán câu hoặc đoạn được phép chỉnh vào đây. Phần còn lại sẽ được giữ nguyên." : "Mô tả cảnh hoặc phạm vi được phép chỉnh…"} className="w-full resize-y rounded-xl border border-[#D9E4D3] px-3 py-2 text-xs leading-5 outline-none focus:border-[#72B65D]" />
+              </div>
+            </details>
+          ) : null}
+
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
             <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               maxLength={3000}
               rows={2}
-              placeholder="Bạn muốn chỉnh thế nào?"
+              placeholder="Bạn muốn chỉnh theo cách khác? Nói cho mình biết nhé…"
               className="min-w-0 flex-1 resize-none rounded-xl border border-[#D9E4D3] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[#72B65D]"
             />
-            <button type="button" disabled={busy || !prompt.trim()} onClick={() => onAsk(prompt)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#31583A] px-3.5 py-2.5 text-xs font-bold text-white disabled:opacity-40">
+            <button type="button" disabled={busy || !canAsk} onClick={() => void ask()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#31583A] px-3.5 py-2.5 text-xs font-bold text-white disabled:opacity-40">
               {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
               {busy ? "Đang chỉnh" : "Gửi Emsen"}
             </button>
           </div>
+          <p className="mt-2 text-[10px] leading-4 text-[#748A74]">Emsen chỉ cập nhật phần {sectionLabel}; Hook, Nội dung, CTA và Storyboard còn lại được giữ nguyên.</p>
+          {alternatives.length ? (
+            <div className="mt-3 rounded-2xl border border-[#D9E8D4] bg-white p-3">
+              <p className="text-xs font-bold text-[#31583A]">Chọn một cách diễn đạt CTA</p>
+              <div className="mt-2 space-y-2">
+                {alternatives.map((alternative, index) => (
+                  <button key={`${alternative}-${index}`} type="button" onClick={() => { onApplyAlternative?.(alternative); setAlternatives([]); }} className="block w-full rounded-xl border border-[#E1E9DD] bg-[#FFFDF9] p-3 text-left text-xs leading-5 text-[#526952] hover:border-[#8ABA7A]">
+                    <strong className="mr-1 text-[#3F8240]">Cách {index + 1}:</strong> {alternative}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <button type="button" onClick={onSettings} className="mt-3 rounded-xl border border-[#C8DBC1] bg-white px-3 py-2 text-xs font-bold text-[#3F8240]">Kết nối AI để dùng</button>
@@ -112,6 +279,61 @@ function AiPrompt({
     </aside>
   );
 }
+
+const keywordStopWords = new Set([
+  "bạn", "mình", "chúng", "những", "một", "này", "đó", "được", "không", "với",
+  "trong", "khi", "thì", "là", "của", "cho", "nhưng", "và", "hay", "đang", "sẽ",
+  "cũng", "rất", "để", "vào", "ra", "lại", "nếu", "từ", "theo", "có", "như",
+]);
+const deliveryPrefixPattern = /^\s*\[(?:Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]\s*/iu;
+
+function deliveryMode(value: string): "Nói trực tiếp" | "Voice-over" | null {
+  const match = value.match(/^\s*\[(Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]/iu)?.[1]?.toLocaleLowerCase("vi-VN");
+  if (!match) return null;
+  return match.includes("voice") || match.includes("lồng") ? "Voice-over" : "Nói trực tiếp";
+}
+
+function withDeliveryMode(value: string, mode: "Nói trực tiếp" | "Voice-over") {
+  return `[${mode}] ${value.replace(deliveryPrefixPattern, "").trimStart()}`;
+}
+
+function extractKeywords(value: string) {
+  const clean = value
+    .replace(/\[?\d{1,2}:[0-5]\d\s*[-–—]\s*\d{1,2}:[0-5]\d\]?/g, " ")
+    .replace(/\[(?:Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]/giu, " ");
+  const words = clean.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const counts = new Map<string, { count: number; original: string }>();
+  for (const word of words) {
+    const normalized = word.toLocaleLowerCase("vi-VN");
+    if (normalized.length < 5 || keywordStopWords.has(normalized)) continue;
+    const current = counts.get(normalized);
+    counts.set(normalized, { count: (current?.count ?? 0) + 1, original: current?.original ?? word });
+  }
+  return [...counts.values()]
+    .sort((left, right) => right.count - left.count || right.original.length - left.original.length)
+    .slice(0, 6)
+    .map((entry) => entry.original);
+}
+
+function HighlightedScriptPreview({ value }: { value: string }) {
+  const keywords = extractKeywords(value);
+  if (!keywords.length) return null;
+  const escaped = keywords.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const matcher = new RegExp(`(${escaped.join("|")})`, "giu");
+  const parts = value.split(matcher);
+  const normalizedKeywords = new Set(keywords.map((word) => word.toLocaleLowerCase("vi-VN")));
+  return (
+    <div className="mt-3 rounded-2xl border border-[#E5E1D4] bg-[#FFFDF4] p-3">
+      <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#8A6D35]"><Highlighter size={13} /> Từ khóa neo trong kịch bản</p>
+      <p className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs leading-6 text-[#526952]">
+        {parts.map((part, index) => normalizedKeywords.has(part.toLocaleLowerCase("vi-VN"))
+          ? <mark className="rounded bg-[#FFE7A8] px-0.5 font-bold text-[#5E4A22]" key={`${part}-${index}`}>{part}</mark>
+          : <span key={`${part}-${index}`}>{part}</span>)}
+      </p>
+    </div>
+  );
+}
+
 function TextSection({
   number,
   title,
@@ -134,7 +356,11 @@ function TextSection({
   busy: boolean;
   aiConfigured: boolean;
   onChange: (value: string) => void;
-  onAssist: (section: ScriptAssistSection, prompt: string) => void;
+  onAssist: (
+    section: ScriptAssistSection,
+    prompt: string,
+    referenceAssets?: ScriptReferenceAssetDto[],
+  ) => Promise<ScriptAssistResponseDto | null>;
   onSettings: () => void;
 }) {
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -184,14 +410,29 @@ function TextSection({
                     <Clock3 size={12} strokeWidth={2.5} /> {segment.label}
                   </span>
                 </div>
-                <textarea
-                  aria-label={`${title} ${segment.label}`}
-                  className="min-h-[58px] w-full resize-y rounded-xl border border-transparent bg-[#FFFDF9] px-3 py-2 text-sm font-normal leading-6 text-[#31583A] outline-none transition hover:border-[#E8DED8] focus:border-[#A9C99D] focus:bg-white focus:ring-2 focus:ring-[#E3F0DE]"
-                  rows={section === "body" ? 2 : 1}
-                  value={segment.text}
-                  placeholder={placeholder}
-                  onChange={(event) => updateTimelineSegment(index, event.target.value)}
-                />
+                <div>
+                  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                    {(["Nói trực tiếp", "Voice-over"] as const).map((mode) => (
+                      <button
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-bold ${deliveryMode(segment.text) === mode ? "bg-[#EAF6E4] text-[#31583A]" : "border border-[#E3E8DF] bg-white text-[#879487]"}`}
+                        key={mode}
+                        onClick={() => updateTimelineSegment(index, withDeliveryMode(segment.text, mode))}
+                        type="button"
+                      >
+                        {mode === "Nói trực tiếp" ? <Mic2 size={10} /> : <Volume2 size={10} />}
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    aria-label={`${title} ${segment.label}`}
+                    className="min-h-[58px] w-full resize-y rounded-xl border border-transparent bg-[#FFFDF9] px-3 py-2 text-sm font-normal leading-6 text-[#31583A] outline-none transition hover:border-[#E8DED8] focus:border-[#A9C99D] focus:bg-white focus:ring-2 focus:ring-[#E3F0DE]"
+                    rows={section === "body" ? 2 : 1}
+                    value={segment.text}
+                    placeholder={placeholder}
+                    onChange={(event) => updateTimelineSegment(index, event.target.value)}
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -228,7 +469,8 @@ function TextSection({
           ) : null}
         </>
       )}
-      {assistantOpen && <AiPrompt section={section} busy={busy} enabled={aiConfigured} onAsk={(prompt) => onAssist(section, prompt)} onClose={() => setAssistantOpen(false)} onSettings={onSettings} />}
+      {value.trim() ? <HighlightedScriptPreview value={value} /> : null}
+      {assistantOpen && <AiPrompt section={section} busy={busy} currentValue={value} enabled={aiConfigured} onAsk={(prompt, referenceAssets) => onAssist(section, prompt, referenceAssets)} {...(section === "cta" ? { onApplyAlternative: onChange } : {})} onClose={() => setAssistantOpen(false)} onSettings={onSettings} />}
     </section>
   );
 }
@@ -272,16 +514,28 @@ export function ScriptEditor({
   onChange: (next: ScriptDocumentDto) => void;
   onSave: () => void;
   onDelete: () => void;
-  onAssist: (section: ScriptAssistSection, prompt: string) => void;
+  onAssist: (
+    section: ScriptAssistSection,
+    prompt: string,
+    referenceAssets?: ScriptReferenceAssetDto[],
+  ) => Promise<ScriptAssistResponseDto | null>;
   onSettings: () => void;
   onStartVideo: () => void;
 }) {
   const [storyboardAssistantOpen, setStoryboardAssistantOpen] = useState(false);
+  const [storyboardRequested, setStoryboardRequested] = useState(draft.content.storyboard.length > 0);
+  const [storyboardExplainerOpen, setStoryboardExplainerOpen] = useState(false);
   const [exportNotice, setExportNotice] = useState("");
 
   useEffect(() => {
     if (notice) setExportNotice("");
   }, [notice]);
+
+  useEffect(() => {
+    setStoryboardRequested(draft.content.storyboard.length > 0);
+    setStoryboardExplainerOpen(false);
+    setStoryboardAssistantOpen(false);
+  }, [draft.id]);
 
   const applyChange = (next: ScriptDocumentDto) => {
     setExportNotice("");
@@ -312,6 +566,26 @@ export function ScriptEditor({
     direction: "",
     durationSeconds: 5,
   }] });
+  const startStoryboard = async (withEmsen: boolean) => {
+    setStoryboardRequested(true);
+    setStoryboardExplainerOpen(false);
+    window.localStorage.setItem(storyboardGuideStorageKey, "true");
+    if (withEmsen && aiConfigured) {
+      await onAssist(
+        "storyboard",
+        "Kịch bản lời thoại đã được chốt. Hãy chuyển đúng phiên bản này thành storyboard dễ quay, ghi rõ thoại trực tiếp hay voice-over cho từng cảnh và không thay đổi thông điệp.",
+      );
+    } else if (withEmsen) {
+      setStoryboardAssistantOpen(true);
+    }
+  };
+  const requestStoryboard = () => {
+    if (window.localStorage.getItem(storyboardGuideStorageKey) === "true") {
+      void startStoryboard(aiConfigured);
+      return;
+    }
+    setStoryboardExplainerOpen(true);
+  };
 
   const closeExportMenu = (trigger: HTMLElement) => trigger.closest("details")?.removeAttribute("open");
   const exportFile = (format: "txt" | "json", trigger: HTMLElement) => {
@@ -374,6 +648,7 @@ export function ScriptEditor({
 
       {error && <p role="alert" className="rounded-xl border border-[#F1C9C2] bg-[#FFF0EC] p-3 text-sm text-[#9A4B42]">{error}</p>}
       {(notice || exportNotice) && <p role="status" className="rounded-xl border border-[#CFE2C7] bg-[#EFF8EB] p-3 text-sm text-[#417447]">{exportNotice || notice}</p>}
+      {assisting ? <AiProgressStatus label={`Emsen đang hoàn thiện ${assisting === "body" ? "Nội dung" : assisting === "storyboard" ? "Storyboard" : assisting.toUpperCase()}`} /> : null}
       {draft.planReference && planSync && planSync.state !== "current" && (
         <section className={`rounded-[18px] border p-4 text-sm ${planSync.state === "source-removed" ? "border-[#F0D6A8] bg-[#FFF7E8] text-[#7C6238]" : "border-[#CFE2C7] bg-[#F4FAF0] text-[#466D47]"}`}>
           <p className="flex items-center gap-2 font-bold"><Link2 size={16} /> {planSync.state === "source-removed" ? "Nội dung nguồn không còn trong lịch" : `Đã đồng bộ từ ${draft.planReference.planName}`}</p>
@@ -416,6 +691,37 @@ export function ScriptEditor({
           <TextSection number={2} title="Nội dung" value={draft.content.body} rows={8} placeholder="Nói điều chính như đang trò chuyện với người xem…" section="body" busy={assisting === "body"} aiConfigured={aiConfigured} onChange={(body) => changeContent({ body })} onAssist={onAssist} onSettings={onSettings} />
           <TextSection number={3} title="CTA" value={draft.content.cta} rows={3} placeholder="Bạn muốn người xem làm gì tiếp theo?" section="cta" busy={assisting === "cta"} aiConfigured={aiConfigured} onChange={(cta) => changeContent({ cta })} onAssist={onAssist} onSettings={onSettings} />
 
+          {completedSections === 3 && !storyboardRequested && !draft.content.storyboard.length ? (
+            <section className="rounded-[22px] border border-[#D9D4E5] bg-gradient-to-br from-[#FBF6FC] to-white p-5">
+              <div className="flex items-start gap-4">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#F3EAF1] text-[#8B557D]"><Film size={20} /></span>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base font-bold text-[#284D31]">Kịch bản đã ổn rồi!</h3>
+                  <p className="mt-1.5 text-sm leading-6 text-[#748A74]">Bạn có muốn mình giúp chuyển nó thành Storyboard để dễ hình dung và bắt tay vào quay hơn không?</p>
+                  <button type="button" onClick={requestStoryboard} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#72506B] px-4 py-2.5 text-xs font-bold text-white"><Sparkles size={14} /> Chuyển thành Storyboard</button>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {storyboardExplainerOpen ? (
+            <section className="rounded-[22px] border border-[#D9D4E5] bg-[#FBF6FC] p-5">
+              <div className="flex items-start gap-3">
+                <EmsenAvatar activity="idea" className="h-14 w-14 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#8B557D]">Storyboard là gì?</p>
+                  <p className="mt-2 text-sm leading-6 text-[#5F6F60]">Storyboard giúp biến kịch bản thành từng cảnh quay cụ thể, để bạn biết mỗi đoạn nên quay gì, thể hiện như thế nào, dùng thoại trực tiếp hay voice-over, góc quay ra sao và cần hiển thị nội dung gì trên màn hình. Nhờ đó, bạn có thể hình dung video rõ hơn trước khi quay và hạn chế việc vừa quay vừa phải nghĩ tiếp.</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void startStoryboard(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#72506B] px-4 py-2.5 text-xs font-bold text-white"><Sparkles size={14} /> {aiConfigured ? "Tạo cùng Emsen" : "Mở và kết nối AI"}</button>
+                    <button type="button" onClick={() => void startStoryboard(false)} className="rounded-xl border border-[#D7CCDA] bg-white px-4 py-2.5 text-xs font-bold text-[#72506B]">Tự chia cảnh</button>
+                    <button type="button" onClick={() => setStoryboardExplainerOpen(false)} className="px-3 py-2.5 text-xs font-bold text-[#879487]">Để sau</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {storyboardRequested || draft.content.storyboard.length ? (
           <details className="group rounded-[22px] border border-[#DDEBD6] bg-white">
             <summary className="flex cursor-pointer list-none items-center gap-3 p-4 sm:p-5">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#F3EAF1] text-[#8B557D]"><Film size={18} /></span>
@@ -432,7 +738,7 @@ export function ScriptEditor({
                 <button type="button" onClick={addFrame} disabled={draft.content.storyboard.length >= 16} className="inline-flex items-center gap-2 rounded-xl border border-[#C8DBC1] px-3 py-2 text-xs font-bold disabled:opacity-40"><Plus size={14} /> Thêm cảnh</button>
                 <button type="button" aria-expanded={storyboardAssistantOpen} onClick={() => setStoryboardAssistantOpen((value) => !value)} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${storyboardAssistantOpen ? "bg-[#EAF6E4] text-[#31583A]" : "border border-[#D7E5D1] text-[#3F8240]"}`}><Sparkles size={14} /> Nhờ Emsen chia cảnh</button>
               </div>
-              {storyboardAssistantOpen && <AiPrompt section="storyboard" busy={assisting === "storyboard"} enabled={aiConfigured} onAsk={(prompt) => onAssist("storyboard", prompt)} onClose={() => setStoryboardAssistantOpen(false)} onSettings={onSettings} />}
+              {storyboardAssistantOpen && <AiPrompt section="storyboard" busy={assisting === "storyboard"} enabled={aiConfigured} onAsk={(prompt, referenceAssets) => onAssist("storyboard", prompt, referenceAssets)} onClose={() => setStoryboardAssistantOpen(false)} onSettings={onSettings} />}
 
               <div className="mt-4 space-y-2">
                 {draft.content.storyboard.map((frame, index) => (
@@ -468,6 +774,7 @@ export function ScriptEditor({
               </div>
             </div>
           </details>
+          ) : null}
         </div>
 
         <aside className="space-y-3 xl:sticky xl:top-24">

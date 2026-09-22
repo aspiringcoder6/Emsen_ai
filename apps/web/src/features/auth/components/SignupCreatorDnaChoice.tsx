@@ -13,14 +13,13 @@ type SignupCreatorDnaChoiceProps = {
   error: string;
   loading: boolean;
   onBack: () => void;
-  onSkip: () => void;
   onStart: () => void;
 };
 
 const benefits = [
-  "Nội dung đầu tiên bớt chung chung hơn",
-  "Ghi nhận phong cách và những điều bạn muốn tránh",
-  "Tiếp tục học dần từ câu chuyện và phản hồi của bạn",
+  "Biến một ý tưởng nhỏ thành kịch bản TikTok có cấu trúc rõ ràng",
+  "Ghi nhận lĩnh vực, khán giả và phong cách bạn muốn thể hiện",
+  "Đồng hành tiếp đến storyboard, cách quay và hoàn thiện video",
 ];
 
 export function SignupCreatorDnaChoice({
@@ -28,7 +27,6 @@ export function SignupCreatorDnaChoice({
   error,
   loading,
   onBack,
-  onSkip,
   onStart,
 }: SignupCreatorDnaChoiceProps) {
   return (
@@ -44,25 +42,27 @@ export function SignupCreatorDnaChoice({
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.13em] text-[#DDF3D3]">
             <Sparkles size={12} />
-            Bước tùy chọn
+            Làm quen cùng Emsen
           </span>
         </div>
         <p className="mt-6 text-xs font-bold uppercase tracking-[0.15em] text-[#DDF3D3]">
-          Tài khoản đã sẵn sàng
+          Xin chào, mình là Emsen
         </p>
         <h2 className="mt-2 text-3xl font-bold leading-tight tracking-[-0.04em]">
-          {displayName}, để emsen hiểu bạn ngay từ đầu nhé?
+          {displayName}, mình cùng làm quen nhé?
         </h2>
         <p className="mt-3 text-sm leading-6 text-[#DCEED9]">
-          Trả lời 6 câu hỏi nhỏ để tạo điểm khởi đầu cho Creator DNA. Bạn cũng có thể bỏ
-          qua và emsen sẽ tìm hiểu dần khi cùng làm nội dung.
+          Mình là một trợ lý sáng tạo nội dung siêu thân thiện và luôn sẵn sàng đồng hành
+          cùng bạn. Chỉ với một ý tưởng nhỏ, mình có thể giúp bạn tìm hướng triển khai,
+          phát triển thành kịch bản TikTok cuốn hút, rồi đi tiếp đến cách thể hiện, cách quay
+          và hoàn thiện video sao cho dễ làm, đúng phong cách của bạn hơn.
         </p>
       </div>
 
       <div className="p-6 sm:p-8">
         <div className="flex items-center gap-2 text-xs font-bold text-[#46A82D]">
           <Clock3 size={15} />
-          Khoảng 3 phút · có thể dừng bất cứ lúc nào
+          Khoảng 3 phút · bước làm quen dành cho tài khoản mới
         </div>
         <div className="mt-5 space-y-3">
           {benefits.map((benefit) => (
@@ -78,8 +78,8 @@ export function SignupCreatorDnaChoice({
         <div className="mt-6 rounded-2xl border border-[#E2EDD9] bg-[#F5FAF3] p-4 text-xs leading-5 text-[#71816E]">
           <div className="flex items-start gap-2.5">
             <ShieldCheck className="mt-0.5 shrink-0 text-[#67B86F]" size={16} />
-            Tài khoản và Creator DNA được lưu trên backend. Google API key chỉ nằm ở máy
-            chủ và không bao giờ được gửi xuống trình duyệt.
+            Các câu trả lời được lưu trong hồ sơ Creator DNA và bạn vẫn có thể chỉnh lại
+            bất cứ lúc nào trong tài khoản.
           </div>
         </div>
 
@@ -98,16 +98,8 @@ export function SignupCreatorDnaChoice({
             onClick={onStart}
             type="button"
           >
-            {loading ? "Đang tạo tài khoản và đánh giá…" : "Bắt đầu thiết lập Creator DNA"}
+            {loading ? "Đang tạo tài khoản…" : "Bắt đầu làm quen cùng Emsen"}
             <ArrowRight className="transition-transform group-hover:translate-x-0.5" size={17} />
-          </button>
-          <button
-            className="h-11 w-full rounded-2xl border border-[#D6E5D0] text-sm font-bold text-[#607760] transition disabled:cursor-wait disabled:opacity-50 enabled:hover:border-[#82C95B] enabled:hover:bg-[#F7FBF3] enabled:hover:text-[#46A82D]"
-            disabled={loading}
-            onClick={onSkip}
-            type="button"
-          >
-            Bỏ qua, vào workspace
           </button>
         </div>
 

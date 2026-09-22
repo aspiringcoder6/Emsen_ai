@@ -9,6 +9,8 @@ export type ScriptTimestampRange = {
 const timestampPattern = /\[?(\d{1,2}):([0-5]\d)\s*[-–—]\s*(\d{1,2}):([0-5]\d)\]?/g;
 const timestampWithSpacingPattern = /\[?\d{1,2}:[0-5]\d\s*[-–—]\s*\d{1,2}:[0-5]\d\]?\s*:?\s*/g;
 const timestampLinePattern = /^\s*\[?(\d{1,2}):([0-5]\d)\s*[-–—]\s*(\d{1,2}):([0-5]\d)\]?\s*:?\s*(.*)$/;
+const deliveryLabelPattern = /\[(?:Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]\s*/giu;
+const deliveryLabelAtStartPattern = /^\s*\[(?:Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]/iu;
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -47,14 +49,20 @@ export function buildFlexibleTimelineGuide(targetDurationSeconds: number) {
       "Các mốc nối tiếp nhau, không chồng lấn và không để khoảng trống.",
       "Độ dài mỗi mốc tỷ lệ với lượng lời thoại và có thể khác nhau.",
       "Tách mốc tại chỗ đổi ý, đổi cảm xúc, đổi cảnh hoặc chuyển vai trò nội dung.",
+      "Hook kéo dài 3–5 giây và CTA kéo dài 3–5 giây với video từ 12 giây trở lên.",
+      "Mỗi mốc ghi rõ [Nói trực tiếp] hoặc [Voice-over] ngay sau timestamp.",
     ],
-    note: "Không có tỷ lệ Hook/Nội dung/CTA cố định; hãy chọn nhịp phù hợp chính kịch bản này.",
+    note: "Ngoài khung 3–5 giây cho Hook và CTA, không có tỷ lệ cố định; hãy chọn nhịp nội dung phù hợp chính kịch bản này.",
     targetDurationSeconds: duration,
   };
 }
 
 export function stripScriptTimestamps(value: string) {
-  return value.replace(timestampWithSpacingPattern, "").replace(/\n{3,}/g, "\n\n").trim();
+  return value
+    .replace(timestampWithSpacingPattern, "")
+    .replace(deliveryLabelPattern, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export function countSpokenWords(value: string) {
@@ -146,6 +154,9 @@ export function scriptTimelineIssues(content: ScriptContentDto, targetDurationSe
   if ([...hookSegments, ...bodySegments, ...ctaSegments].some((segment) => !segment.text.trim())) {
     issues.push("Mỗi mốc thời gian cần có lời thoại cụ thể.");
   }
+  if ([...hookSegments, ...bodySegments, ...ctaSegments].some((segment) => !deliveryLabelAtStartPattern.test(segment.text))) {
+    issues.push("Mỗi mốc thời gian cần ghi rõ [Nói trực tiếp] hoặc [Voice-over].");
+  }
 
   const all = [...hook, ...body, ...cta];
   if (all[0]!.startSeconds !== 0) issues.push("Timeline phải bắt đầu tại 0:00.");
@@ -159,6 +170,16 @@ export function scriptTimelineIssues(content: ScriptContentDto, targetDurationSe
       issues.push(`Timeline bị hở hoặc chồng lấn giữa ${previous.label} và ${entry.label}.`);
     }
   });
+  if (duration >= 12) {
+    const hookDuration = hook.at(-1)!.endSeconds - hook[0]!.startSeconds;
+    const ctaDuration = cta.at(-1)!.endSeconds - cta[0]!.startSeconds;
+    if (hookDuration < 3 || hookDuration > 5) {
+      issues.push(`Hook cần kéo dài 3–5 giây; hiện tại là ${hookDuration} giây.`);
+    }
+    if (ctaDuration < 3 || ctaDuration > 5) {
+      issues.push(`CTA cần kéo dài 3–5 giây; hiện tại là ${ctaDuration} giây.`);
+    }
+  }
   if (duration >= 30 && body.length < 2) {
     issues.push("Nội dung chính cần ít nhất hai nhịp có timestamp cho video từ 30 giây.");
   }
@@ -185,15 +206,15 @@ export function scriptWordBudget(targetDurationSeconds: number) {
         : duration <= 60
           ? Math.round(130 + (duration - 45) * 40 / 15)
           : Math.round(170 + (duration - 60) * 2.8);
-  const hookMin = Math.max(4, Math.round(totalMin * 0.04));
-  const ctaMin = Math.max(4, Math.round(totalMin * 0.04));
+  const hookMin = duration >= 12 ? 6 : Math.max(3, Math.round(totalMin * 0.04));
+  const ctaMin = duration >= 12 ? 5 : Math.max(3, Math.round(totalMin * 0.04));
   return {
     body: {
       max: Math.max(15, Math.round(totalMax * 0.9)),
       min: Math.max(8, Math.round(totalMin * 0.55)),
     },
-    cta: { max: Math.max(9, Math.round(totalMax * 0.25)), min: ctaMin },
-    hook: { max: Math.max(9, Math.round(totalMax * 0.3)), min: hookMin },
+    cta: { max: duration >= 12 ? 16 : Math.max(8, Math.round(totalMax * 0.25)), min: ctaMin },
+    hook: { max: duration >= 12 ? 15 : Math.max(8, Math.round(totalMax * 0.3)), min: hookMin },
     total: { max: totalMax, min: totalMin },
   };
 }
@@ -210,6 +231,8 @@ export function scriptGenerationIssues(content: ScriptContentDto, targetDuration
   if (bodyWords < budget.body.min) issues.push(`Phần nội dung có ${bodyWords} từ; cần ít nhất ${budget.body.min} từ.`);
   if (bodyWords > budget.body.max) issues.push(`Phần nội dung có ${bodyWords} từ; nên tối đa ${budget.body.max} từ.`);
   if (hookWords < budget.hook.min) issues.push(`Hook cần ít nhất ${budget.hook.min} từ.`);
+  if (hookWords > budget.hook.max) issues.push(`Hook nên tối đa ${budget.hook.max} từ để giữ trong 3–5 giây.`);
   if (ctaWords < budget.cta.min) issues.push(`CTA cần ít nhất ${budget.cta.min} từ.`);
+  if (ctaWords > budget.cta.max) issues.push(`CTA nên tối đa ${budget.cta.max} từ để giữ trong 3–5 giây.`);
   return issues;
 }

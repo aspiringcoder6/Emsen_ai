@@ -156,7 +156,7 @@ export async function completeCreatorDnaOnboarding(
     );
   }
 
-  await updateProfile(userId, profile, "completed", 5);
+  await updateProfile(userId, profile, "completed", 4);
   await evaluateAndStoreUser({
     displayName: profile.displayName,
     profile,

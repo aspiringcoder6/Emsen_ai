@@ -80,7 +80,7 @@ function parseSaveOnboarding(value: unknown): SaveCreatorDnaOnboardingRequestDto
   const body = objectBody(value);
   const status = body.status;
   const currentStep = body.currentStep;
-  if (!Number.isInteger(currentStep) || (currentStep as number) < 0 || (currentStep as number) > 5) {
+  if (!Number.isInteger(currentStep) || (currentStep as number) < 0 || (currentStep as number) > 4) {
     throw new HttpError(400, "INVALID_STEP", "Bước onboarding không hợp lệ.");
   }
   if (status !== "not-started" && status !== "in-progress" && status !== "skipped") {

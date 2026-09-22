@@ -3,6 +3,7 @@ import type {
   CreateScriptRequestDto,
   ScriptAssistSection,
   ScriptDocumentDto,
+  ScriptReferenceAssetDto,
   ScriptStatus,
   ScriptWorkspaceDto,
   UpdateScriptRequestDto,
@@ -178,18 +179,33 @@ export function ScriptsPage({ active, onSettings, onStartVideo }: { active: bool
     }
   };
 
-  const askAi = async (section: ScriptAssistSection, prompt: string) => {
-    if (!draft || assisting) return;
+  const askAi = async (
+    section: ScriptAssistSection,
+    prompt: string,
+    referenceAssets?: ScriptReferenceAssetDto[],
+  ) => {
+    if (!draft || assisting) return null;
     setAssisting(section);
     setError("");
     setNotice("");
     try {
-      const result = await assistScript(draft.id, { section, instruction: prompt, draft: updateRequest(draft) });
-      setDraft((current) => current ? { ...current, content: { ...current.content, ...result.patch }, model: result.model } : current);
-      setDirty(true);
-      setNotice("Đã đặt đề xuất AI vào bản đang làm. Hãy đọc lại và lưu khi phù hợp.");
+      const result = await assistScript(draft.id, {
+        section,
+        instruction: prompt,
+        draft: updateRequest(draft),
+        ...(referenceAssets?.length ? { referenceAssets } : {}),
+      });
+      if (Object.keys(result.patch).length) {
+        setDraft((current) => current ? { ...current, content: { ...current.content, ...result.patch }, model: result.model } : current);
+        setDirty(true);
+        setNotice("Đã đặt đề xuất của Emsen vào đúng phần bạn cho phép. Hãy đọc lại và lưu khi phù hợp.");
+      } else if (result.alternatives?.length) {
+        setNotice("Emsen đã chuẩn bị các cách diễn đạt. Chọn phương án bạn muốn giữ lại.");
+      }
+      return result;
     } catch (error) {
       setError(error instanceof Error ? error.message : "AI chưa thể hỗ trợ phần này.");
+      return null;
     } finally {
       setAssisting(null);
     }
@@ -256,7 +272,7 @@ export function ScriptsPage({ active, onSettings, onStartVideo }: { active: bool
         onChange={(next) => { setDraft(next); setDirty(true); setNotice(""); }}
         onSave={() => void save()}
         onDelete={() => setDeleteCandidate(draft)}
-        onAssist={(section, prompt) => void askAi(section, prompt)}
+        onAssist={askAi}
         onSettings={onSettings}
         onStartVideo={() => onStartVideo(draft.id)}
       />

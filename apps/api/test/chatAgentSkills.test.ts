@@ -84,9 +84,9 @@ test("chat executes Creator DNA, Direction and Content Plan work through registe
       return {
         model: "agent-skill-test-model",
         output: {
-          hook: "[0:00–0:06] Bạn không cần chờ đến khi thật giỏi mới bắt đầu làm content, vì chính video đầu tiên sẽ dạy bạn điều quan trọng nhất.",
-          body: "[0:06–0:22] Ngày đầu cầm điện thoại, mình cũng nghĩ phải có ánh sáng đẹp, máy quay tốt và một lời thoại hoàn hảo thì mới xứng đáng đăng. Mình quay đi quay lại rất nhiều lần, nhưng càng sửa thì câu chữ càng cứng và mình càng sợ người khác đánh giá.\n[0:22–0:43] Chỉ khi đăng một phiên bản chưa hoàn hảo, mình mới nhận ra phản hồi thật hữu ích hơn phỏng đoán. Từ đó, mình đổi mục tiêu: mỗi video không cần chứng minh mình giỏi, nó chỉ cần giúp một người hiểu thêm một điều cụ thể.\n[0:43–0:54] Nếu bạn đang mắc kẹt, hãy chọn một ý nhỏ, nói bằng lời của mình và xem video đầu như một lần luyện tập công khai.",
-          cta: "[0:54–1:00] Bạn đang trì hoãn video nào vì muốn nó hoàn hảo? Kể mình nghe điều khiến bạn chưa dám đăng nhé.",
+          hook: "[0:00–0:05] [Nói trực tiếp] Bạn không cần thật giỏi mới bắt đầu làm content.",
+          body: "[0:05–0:22] [Nói trực tiếp] Ngày đầu cầm điện thoại, mình cũng nghĩ phải có ánh sáng đẹp, máy quay tốt và một lời thoại hoàn hảo thì mới xứng đáng đăng. Mình quay đi quay lại rất nhiều lần, nhưng càng sửa thì câu chữ càng cứng và mình càng sợ người khác đánh giá.\n[0:22–0:43] [Voice-over] Chỉ khi đăng một phiên bản chưa hoàn hảo, mình mới nhận ra phản hồi thật hữu ích hơn phỏng đoán. Từ đó, mình đổi mục tiêu: mỗi video không cần chứng minh mình giỏi, nó chỉ cần giúp một người hiểu thêm một điều cụ thể.\n[0:43–0:55] [Nói trực tiếp] Nếu bạn đang mắc kẹt, hãy chọn một ý nhỏ, nói bằng lời của mình và xem video đầu như một lần luyện tập công khai.",
+          cta: "[0:55–1:00] [Nói trực tiếp] Bạn đang trì hoãn video nào? Kể mình nghe nhé.",
           storyboard: [0, 1].map((index) => ({
             title: `Cảnh ${index + 1}`,
             visual: "Người nói trước máy quay",

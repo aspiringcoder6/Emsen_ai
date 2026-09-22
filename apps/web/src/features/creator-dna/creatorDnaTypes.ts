@@ -35,7 +35,8 @@ export type CreatorDnaQuestion = {
   description: string;
   required: boolean;
   signal: string;
-  kind: "text" | "single" | "multi" | "textarea";
+  kind: "text" | "single" | "multi" | "multi-text" | "textarea";
   placeholder?: string;
   options?: string[];
+  selectionLimit?: number;
 };

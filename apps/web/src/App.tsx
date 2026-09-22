@@ -25,8 +25,12 @@ import { ScriptsPage } from "./pages/ScriptsPage";
 import { VideoStudioPage } from "./pages/VideoStudioPage";
 import type { AuthRequest, AuthUser } from "./types/app";
 
+const requiredOnboardingStorageKey = (userId: string) =>
+  `emsen:required-onboarding:${userId}`;
+
 export function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null | undefined>(undefined);
+  const [onboardingRequired, setOnboardingRequired] = useState(false);
   const [activeItem, setActiveItem] = useState("overview");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -55,6 +59,13 @@ export function App() {
       .then((session) => {
         if (active) {
           setAuthUser(session?.user ?? null);
+          setOnboardingRequired(
+            Boolean(
+              session?.user &&
+                window.localStorage.getItem(requiredOnboardingStorageKey(session.user.id)) ===
+                  "true",
+            ),
+          );
         }
       })
       .catch(() => {
@@ -88,6 +99,8 @@ export function App() {
         password: request.password,
         phoneNumber: request.phoneNumber,
       });
+      window.localStorage.setItem(requiredOnboardingStorageKey(session.user.id), "true");
+      setOnboardingRequired(true);
       setActiveItem(request.creatorDna === "start" ? "creator-dna" : "overview");
       setAuthUser(session.user);
     } else {
@@ -96,6 +109,7 @@ export function App() {
         phoneNumber: request.phoneNumber,
         remember: request.remember,
       });
+      setOnboardingRequired(false);
       setActiveItem("overview");
       setAuthUser(session.user);
     }
@@ -108,6 +122,10 @@ export function App() {
       setAuthUser(null);
     }
     clearChatStorage();
+    if (authUser) {
+      window.localStorage.removeItem(requiredOnboardingStorageKey(authUser.id));
+    }
+    setOnboardingRequired(false);
     setChatOpen(false);
     setActiveItem("overview");
     setAuthUser(null);
@@ -126,6 +144,23 @@ export function App() {
 
   if (!authUser) {
     return <AuthPage onAuthenticate={handleAuthenticate} />;
+  }
+
+  if (onboardingRequired) {
+    return (
+      <main className="min-h-screen bg-[#FBFDF7] p-4 text-[#31583A] sm:p-6 xl:p-8">
+        <div className="mx-auto max-w-[1280px]">
+          <CreatorDnaPage
+            required
+            onStartCreating={() => {
+              window.localStorage.removeItem(requiredOnboardingStorageKey(authUser.id));
+              setOnboardingRequired(false);
+              setActiveItem("overview");
+            }}
+          />
+        </div>
+      </main>
+    );
   }
 
   return (

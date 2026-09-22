@@ -7,6 +7,7 @@ export type EditableTimelineSegment = {
 
 const linePattern = /^\s*\[?(\d{1,2}):([0-5]\d)\s*[-–—]\s*(\d{1,2}):([0-5]\d)\]?\s*:?\s*(.*)$/;
 const inlinePattern = /\[?\d{1,2}:[0-5]\d\s*[-–—]\s*\d{1,2}:[0-5]\d\]?\s*:?\s*/g;
+const deliveryLabelPattern = /\[(?:Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]\s*/giu;
 
 function toSeconds(minutes: string, seconds: string) {
   return Number(minutes) * 60 + Number(seconds);
@@ -50,5 +51,5 @@ export function serializeTimelineText(segments: EditableTimelineSegment[]) {
 }
 
 export function stripTimelineTimestamps(value: string) {
-  return value.replace(inlinePattern, "").trim();
+  return value.replace(inlinePattern, "").replace(deliveryLabelPattern, "").trim();
 }

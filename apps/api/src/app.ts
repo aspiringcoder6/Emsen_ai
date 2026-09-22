@@ -41,7 +41,7 @@ export function createApp() {
       },
     }),
   );
-  app.use(express.json({ limit: "256kb" }));
+  app.use(express.json({ limit: "6mb" }));
 
   app.use((request, _response, next) => {
     if (["GET", "HEAD", "OPTIONS"].includes(request.method)) {

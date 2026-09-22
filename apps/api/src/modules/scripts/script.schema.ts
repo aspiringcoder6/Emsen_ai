@@ -17,6 +17,16 @@ import { HttpError } from "../../shared/http.js";
 
 const statuses: ScriptStatus[] = ["draft", "in-progress", "ready", "completed", "archived"];
 const assistSections: ScriptAssistSection[] = ["hook", "body", "cta", "storyboard"];
+const referenceMimeTypes = new Set([
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+]);
+const maxReferenceBytes = 4 * 1024 * 1024;
 export const scriptHookAngleTypes: ScriptHookAngleType[] = [
   "pain",
   "curiosity",
@@ -67,6 +77,32 @@ function uuid(value: unknown, label: string) {
     return invalid(`${label} không hợp lệ.`);
   }
   return value;
+}
+
+function parseReferenceAssets(value: unknown) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 3) {
+    return invalid("Mỗi lượt chỉ nhận tối đa 3 tệp tham chiếu.");
+  }
+  let totalBytes = 0;
+  return value.map((entry) => {
+    const row = scriptObject(entry);
+    const name = text(row.name, "Tên tệp tham chiếu", 180, true);
+    const mimeType = text(row.mimeType, "Định dạng tệp tham chiếu", 80, true).toLowerCase();
+    const dataBase64 = text(row.dataBase64, "Dữ liệu tệp tham chiếu", 5_600_000, true);
+    if (!referenceMimeTypes.has(mimeType)) {
+      return invalid(`Tệp ${name} chưa được hỗ trợ. Hãy dùng PNG, JPEG, WEBP, GIF, MP4, MOV hoặc WEBM.`);
+    }
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(dataBase64)) {
+      return invalid(`Dữ liệu tệp ${name} không hợp lệ.`);
+    }
+    const bytes = Buffer.from(dataBase64, "base64").length;
+    totalBytes += bytes;
+    if (!bytes || totalBytes > maxReferenceBytes) {
+      return invalid("Tổng tệp tham chiếu cần nhỏ hơn 4 MB.");
+    }
+    return { dataBase64, mimeType, name };
+  });
 }
 
 export function parseStoryboard(value: unknown): ScriptStoryboardFrameDto[] {
@@ -266,47 +302,49 @@ export function parseScriptAssist(value: unknown): ScriptAssistRequestDto {
     section: body.section as ScriptAssistSection,
     instruction: text(body.instruction, "Yêu cầu cho AI", 3000, true),
     draft: parseUpdateScript(body.draft),
+    referenceAssets: parseReferenceAssets(body.referenceAssets),
   };
 }
+
+const generatedStoryboardFramesSchema = {
+  type: "array",
+  minItems: 2,
+  maxItems: 10,
+  items: {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      visual: { type: "string" },
+      visualPurpose: { type: "string" },
+      broll: { type: "string" },
+      dialogue: { type: "string" },
+      emotionalBeat: { type: "string" },
+      transition: { type: "string" },
+      retentionRole: { type: "string" },
+      direction: { type: "string" },
+      durationSeconds: { type: "integer", minimum: 0, maximum: 600 },
+    },
+    required: ["title", "visual", "visualPurpose", "broll", "dialogue", "emotionalBeat", "transition", "retentionRole", "direction", "durationSeconds"],
+  },
+};
 
 export const generatedScriptResponseSchema = {
   type: "object",
   properties: {
     hook: {
-      description: "Lời thoại hook đầy đủ, bắt đầu bằng timestamp linh hoạt do nội dung quyết định.",
+      description: "Lời thoại Hook 3–5 giây, bắt đầu bằng timestamp và nhãn [Nói trực tiếp] hoặc [Voice-over].",
       type: "string",
     },
     body: {
-      description: "Lời thoại nội dung chính đã phát triển đầy đủ, chia thành nhiều dòng timestamp theo các nhịp có ý nghĩa.",
+      description: "Lời thoại nội dung chính đã phát triển đầy đủ, chia thành nhiều dòng timestamp nhỏ; mỗi dòng có nhãn cách thể hiện.",
       type: "string",
     },
     cta: {
-      description: "Lời thoại CTA tự nhiên, bắt đầu bằng timestamp và kết thúc đúng tổng thời lượng video.",
+      description: "Lời thoại CTA 3–5 giây, bắt đầu bằng timestamp, có nhãn cách thể hiện và kết thúc đúng tổng thời lượng video.",
       type: "string",
     },
-    storyboard: {
-      type: "array",
-      minItems: 2,
-      maxItems: 10,
-      items: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          visual: { type: "string" },
-          visualPurpose: { type: "string" },
-          broll: { type: "string" },
-          dialogue: { type: "string" },
-          emotionalBeat: { type: "string" },
-          transition: { type: "string" },
-          retentionRole: { type: "string" },
-          direction: { type: "string" },
-          durationSeconds: { type: "integer", minimum: 0, maximum: 600 },
-        },
-        required: ["title", "visual", "visualPurpose", "broll", "dialogue", "emotionalBeat", "transition", "retentionRole", "direction", "durationSeconds"],
-      },
-    },
   },
-  required: ["hook", "body", "cta", "storyboard"],
+  required: ["hook", "body", "cta"],
 };
 
 export const scriptBrainstormResponseSchema = {
@@ -342,8 +380,21 @@ export const textSuggestionResponseSchema = {
   required: ["suggestion"],
 };
 
+export const ctaAlternativesResponseSchema = {
+  type: "object",
+  properties: {
+    suggestions: {
+      type: "array",
+      minItems: 2,
+      maxItems: 3,
+      items: { type: "string" },
+    },
+  },
+  required: ["suggestions"],
+};
+
 export const storyboardSuggestionResponseSchema = {
   type: "object",
-  properties: { frames: generatedScriptResponseSchema.properties.storyboard },
+  properties: { frames: generatedStoryboardFramesSchema },
   required: ["frames"],
 };
