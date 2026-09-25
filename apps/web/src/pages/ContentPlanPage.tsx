@@ -58,7 +58,7 @@ export function ContentPlanPage({
       <header className="rounded-[28px] border border-[#DDEBD6] bg-gradient-to-br from-white via-[#FFF5F0] to-[#F0F6EA] p-6 sm:p-8">
         <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#3F8240]"><CalendarDays size={17} /> Bước 03 · Kế hoạch nội dung</p>
         <h2 className="mt-3 text-3xl font-bold text-[#284D31]">Lên lịch vừa sức với bạn.</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#748A74]">Chọn ngày có thể quay, đặt mục tiêu nếu muốn và để Emsen sắp phần còn lại.</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#748A74]">Chọn ngày có thể quay, đặt mục tiêu nếu muốn và để Emsen sắp xếp phần còn lại.</p>
       </header>
 
       {state && (

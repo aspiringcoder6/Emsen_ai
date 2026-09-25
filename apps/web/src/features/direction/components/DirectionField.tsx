@@ -1,4 +1,5 @@
-import { ChevronDown, RefreshCw } from "lucide-react";
+import { ChevronDown } from "lucide-react";
+import { DirectionAiPrompt } from "./DirectionAiPrompt";
 
 export const directionInputClass =
   "mt-2 w-full rounded-2xl border border-[#DCE9D7] bg-[#FFFDF8] px-4 py-3 text-sm leading-6 text-[#31583A] outline-none transition placeholder:text-[#AE9490] focus:border-[#82C95B] focus:bg-white focus:ring-4 focus:ring-[#82C95B]/10 disabled:opacity-60";
@@ -8,7 +9,7 @@ type Props = {
   disabled: boolean;
   hint: string;
   onChange: (value: string) => void;
-  onRegenerate: () => void;
+  onRegenerate: (instruction: string) => void;
   title: string;
   value: string;
 };
@@ -46,15 +47,12 @@ export function DirectionField({
           onChange={(event) => onChange(event.target.value)}
           value={value}
         />
-        <button
-          aria-label={`AI tạo lại ${title.toLocaleLowerCase("vi-VN")}`}
-          className="mt-3 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold text-[#3F7D3D] hover:bg-[#F1F8EC] disabled:opacity-40"
-          disabled={disabled || !canGenerate}
-          onClick={onRegenerate}
-          type="button"
-        >
-          <RefreshCw size={13} /> Nhờ Emsen viết lại phần này
-        </button>
+        <DirectionAiPrompt
+          canGenerate={canGenerate}
+          disabled={disabled}
+          onSubmit={onRegenerate}
+          subject={title}
+        />
       </div>
     </details>
   );

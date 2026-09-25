@@ -63,7 +63,7 @@ export function CreateScriptPanel({
   const [customDuration, setCustomDuration] = useState(false);
   const [creatorExperience, setCreatorExperience] = useState("");
   const [ctaStyle, setCtaStyle] = useState(ctaStyles[0]!);
-  const [useAi, setUseAi] = useState(false);
+  const [useAi, setUseAi] = useState(aiConfigured);
   const [brainstorming, setBrainstorming] = useState(false);
   const [brainstormError, setBrainstormError] = useState("");
   const [brainstormResult, setBrainstormResult] = useState<(ScriptBrainstormResponseDto & { fingerprint: string }) | null>(null);
@@ -212,6 +212,11 @@ export function CreateScriptPanel({
         <button type="button" disabled={!aiConfigured} aria-pressed={useAi} onClick={() => setUseAi((value) => !value)} className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-40 ${useAi ? "border-[#6DAE58] bg-[#284D31] text-white" : "border-[#C8DBC1] bg-white text-[#31583A]"}`}><Sparkles size={16} /> {useAi ? "Đang làm cùng Emsen" : "Nhờ Emsen phát triển"}</button>
         {!aiConfigured && <button type="button" onClick={onSettings} className="text-xs font-bold text-[#3F8240] underline underline-offset-4">Kết nối AI</button>}
       </div>
+      <p className="mt-2 text-[11px] leading-5 text-[#748A74]">
+        {useAi
+          ? "Emsen sẽ đề xuất một bản Hook – Nội dung – CTA hoàn chỉnh trước, sau đó bạn chỉnh dần từng phần."
+          : "Bạn sẽ mở một khung viết để tự phát triển nội dung từ đầu."}
+      </p>
 
       {useAi && (
         <section className="mt-4 rounded-[22px] border border-[#CFE3C8] bg-[#F4FAF0] p-4 sm:p-5">

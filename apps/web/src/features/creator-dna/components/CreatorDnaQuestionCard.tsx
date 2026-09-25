@@ -50,7 +50,7 @@ const onboardingGuides: Record<CreatorDnaQuestion["id"], OnboardingGuide> = {
   },
   toneTraits: {
     avatar: { emotion: "cute" },
-    prompt: "Bạn có thể chọn tối đa 3 phong cách gần với mình nhất, hoặc bỏ qua nếu vẫn đang khám phá.",
+    prompt: "Bạn có thể chọn nhiều phong cách gần với mình nhất để Emsen phối hợp linh hoạt.",
     completed: "Mình bắt đầu hình dung được cách bạn muốn trò chuyện với khán giả rồi.",
   },
   audience: {
@@ -101,6 +101,11 @@ export function CreatorDnaQuestionCard({
   const customTextSelection = textSelections.filter((item) => !question.options?.includes(item)).join(", ");
   const hasCurrentAnswer = Array.isArray(value) ? value.length > 0 : value.trim().length > 0;
   const isRequired = requiredFlow || question.required;
+  const selectedCount = question.kind === "multi-text"
+    ? textSelections.length
+    : question.kind === "multi"
+      ? arrayValue.length
+      : 0;
   const guide = onboardingGuides[question.id];
   const guideMessage = hasCurrentAnswer
     ? `${guide.completed} Mình sẽ đợi bạn bấm “${currentStep === totalSteps - 1 ? "Hoàn tất" : "Tiếp tục"}” khi đã sẵn sàng.`
@@ -194,6 +199,13 @@ export function CreatorDnaQuestionCard({
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#748A74]">
             {question.description}
           </p>
+          {question.kind === "multi" || question.kind === "multi-text" ? (
+            <p className="mt-2 text-xs font-bold text-[#3F8240]" role="status">
+              {selectedCount
+                ? `Đã chọn ${selectedCount} mục${question.selectionLimit ? ` / ${question.selectionLimit}` : ""}`
+                : "Bạn có thể chọn nhiều mục"}
+            </p>
+          ) : null}
 
           <div className="mt-7">
             {question.kind === "text" ? (

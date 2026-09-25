@@ -62,14 +62,24 @@ export function useDirection(active: boolean) {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  const run = async (kind: "draft" | "approved" | "generate", section: DirectionSection | "all" = "all") => {
+  const run = async (
+    kind: "draft" | "approved" | "generate",
+    section: DirectionSection | "all" = "all",
+    instruction?: string,
+  ) => {
     if (!state || busyRef.current) return;
     busyRef.current = true;
     setBusy(kind === "generate" ? section : kind); setError(""); setNotice("");
     try {
       const baseVersion = state.versions[0]?.version ?? 0;
       const result = kind === "generate"
-        ? await generateDirection({ baseVersion, brief, section, ...(section !== "all" ? { content } : {}) })
+        ? await generateDirection({
+            baseVersion,
+            brief,
+            section,
+            ...(section !== "all" ? { content } : {}),
+            ...(instruction?.trim() ? { instruction: instruction.trim() } : {}),
+          })
         : await saveDirection({ baseVersion, brief, content, status: kind });
       if (!mounted.current) return;
       setState((current) => current ? { ...current, creatorDna: result.dnaSnapshot, versions: [result, ...current.versions] } : current);

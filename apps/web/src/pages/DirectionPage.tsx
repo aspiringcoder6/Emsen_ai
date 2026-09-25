@@ -303,8 +303,8 @@ export function DirectionPage({
     }
   }, [active, loadGoalSuggestions]);
 
-  const regenerate = (section: DirectionSection | "all") => {
-    void direction.run("generate", section);
+  const regenerate = (section: DirectionSection | "all", instruction?: string) => {
+    void direction.run("generate", section, instruction);
   };
 
   const guideMessage = goalSuggestionsLoading
@@ -350,11 +350,14 @@ export function DirectionPage({
               Chọn một hướng đi để bắt đầu
             </h2>
             <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[#607760]">
-              Bạn nói điều mình muốn đạt được, Emsen sẽ giúp biến nó thành định hướng rõ ràng.
+              Chỉ cần chia sẻ mong muốn của bạn, Emsen sẽ giúp bạn tạo nên một lộ trình thật rõ ràng.
             </p>
           </div>
-          <div className="flex items-center gap-1.5 rounded-full border border-white bg-white/75 p-1.5 text-[11px] font-bold text-[#6D806C] shadow-sm">
-            {["DNA", "Định hướng", "Kế hoạch"].map((label, index) => (
+          <div
+            aria-label="Lộ trình Creator DNA, Định hướng, Kế hoạch và Kịch bản"
+            className="flex items-center gap-1.5 rounded-full border border-white bg-white/75 p-1.5 text-[11px] font-bold text-[#6D806C] shadow-sm"
+          >
+            {["Creator DNA", "Định hướng", "Kế hoạch", "Kịch bản"].map((label, index) => (
               <span
                 className={`rounded-full px-2.5 py-1.5 ${
                   index === 1 ? "bg-[#284D31] text-white" : "hidden sm:inline"
@@ -433,20 +436,21 @@ export function DirectionPage({
                 <Target size={19} />
               </span>
               <div>
-                <h3 className="font-bold text-[#284D31]">Bạn muốn kênh này giúp mình điều gì?</h3>
+                <h3 className="font-bold text-[#284D31]">Mô tả tổng quan về kênh và mục tiêu của bạn</h3>
                 <p className="mt-1 text-xs leading-5 text-[#748A74]">
-                  Chọn một gợi ý hoặc viết tự nhiên như khi bạn nói chuyện với một người bạn.
+                  Chia sẻ các thông tin về kênh của bạn (tên kênh, số lượng followers,...) và
+                  mục tiêu của bạn. Hãy chia sẻ tự nhiên như khi nói chuyện với một người bạn.
                 </p>
               </div>
             </div>
 
             <fieldset className="mt-4" disabled={locked}>
               <textarea
-                aria-label="Mục tiêu của kênh"
+                aria-label="Thông tin tổng quan và mục tiêu của kênh"
                 className={`${directionInputClass} mt-0 min-h-24 resize-y`}
                 maxLength={1000}
                 onChange={(event) => direction.editBrief({ ...brief, goal: event.target.value })}
-                placeholder="Ví dụ: Mình muốn chia sẻ kiến thức làm bánh để người mới có thể tự tin bắt đầu tại nhà."
+                placeholder="Ví dụ: Kênh Bếp Nhà An hiện có khoảng 2.000 followers. Mình chia sẻ món ăn gia đình và muốn giúp người bận rộn tự tin nấu bữa cơm đơn giản tại nhà."
                 rows={3}
                 value={brief.goal}
               />
@@ -573,14 +577,16 @@ export function DirectionPage({
             </div>
 
             <div className={`mt-5 grid gap-3 ${compact ? "" : "md:grid-cols-3"}`}>
-              <SummaryItem label="Bạn được nhớ đến vì" value={content.positioning} />
-              <SummaryItem label="Bạn sẽ trò chuyện như" value={content.tone} />
-              <SummaryItem label="Bạn đang nói với" value={content.audience} />
+              <SummaryItem label="Định vị kênh" value={content.positioning} />
+              <SummaryItem label="Giọng điệu & cách thể hiện" value={content.tone} />
+              <SummaryItem label="Khán giả bạn muốn đồng hành" value={content.audience} />
             </div>
 
             <div className="mt-4 rounded-2xl border border-[#E2EDE0] bg-[#FAFCF8] p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-bold text-[#526952]">Những nhóm nội dung chính</p>
+                <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#526952]">
+                  Trụ cột nội dung
+                </p>
                 <span
                   className={`text-[11px] font-bold ${total === 100 ? "text-[#487D50]" : "text-[#A56743]"}`}
                 >
@@ -683,9 +689,9 @@ export function DirectionPage({
               </div>
 
               <fieldset className="rounded-[20px] border border-[#DDEBD6] bg-white p-5" disabled={locked}>
-                <label className="block text-xs font-bold text-[#526952]">
+                <label className="block text-sm font-bold text-[#284D31]">
                   Mong muốn hoặc giới hạn thêm{" "}
-                  <span className="font-normal text-[#829782]">· Không bắt buộc</span>
+                  <span className="text-xs font-normal text-[#829782]">· Không bắt buộc</span>
                   <textarea
                     className={directionInputClass}
                     maxLength={4000}
@@ -704,7 +710,7 @@ export function DirectionPage({
                   hint={field.hint}
                   key={field.key}
                   onChange={(value) => direction.editContent({ ...content, [field.key]: value })}
-                  onRegenerate={() => regenerate(field.key)}
+                  onRegenerate={(instruction) => regenerate(field.key, instruction)}
                   title={field.title}
                   value={content[field.key]}
                 />
@@ -714,7 +720,7 @@ export function DirectionPage({
                 canGenerate={canGenerate && valid}
                 disabled={locked}
                 onChange={(pillars) => direction.editContent({ ...content, pillars })}
-                onRegenerate={() => regenerate("pillars")}
+                onRegenerate={(instruction) => regenerate("pillars", instruction)}
                 pillars={content.pillars}
               />
 

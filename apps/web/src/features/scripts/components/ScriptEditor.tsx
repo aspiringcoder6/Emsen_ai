@@ -18,10 +18,10 @@ import {
   FileJson,
   Film,
   FolderKanban,
-  Highlighter,
   Link2,
   LoaderCircle,
   Mic2,
+  PencilLine,
   Plus,
   Quote,
   Save,
@@ -106,11 +106,11 @@ function AiPrompt({
     hook: [
       "Rút Hook ngắn hơn",
       "Mở đầu tự nhiên hơn",
-      "Tăng sự tò mò",
-      "Viết mạnh và trực diện hơn",
-      "Dí dỏm hơn",
-      "Mở bằng một tình huống",
-      "Mở bằng một quan điểm gây chú ý",
+      "Mở bằng một tuyên bố bất ngờ nhưng có thật",
+      "Đặt câu hỏi khiến người xem thấy mình trong đó",
+      "Mở từ một trải nghiệm thật",
+      "Hứa hẹn một mẹo cụ thể",
+      "Mở bằng một quan điểm khác biệt",
     ],
     body: [
       "Giữ phần mình thích và phát triển thêm",
@@ -280,11 +280,6 @@ function AiPrompt({
   );
 }
 
-const keywordStopWords = new Set([
-  "bạn", "mình", "chúng", "những", "một", "này", "đó", "được", "không", "với",
-  "trong", "khi", "thì", "là", "của", "cho", "nhưng", "và", "hay", "đang", "sẽ",
-  "cũng", "rất", "để", "vào", "ra", "lại", "nếu", "từ", "theo", "có", "như",
-]);
 const deliveryPrefixPattern = /^\s*\[(?:Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]\s*/iu;
 
 function deliveryMode(value: string): "Nói trực tiếp" | "Voice-over" | null {
@@ -297,40 +292,105 @@ function withDeliveryMode(value: string, mode: "Nói trực tiếp" | "Voice-ove
   return `[${mode}] ${value.replace(deliveryPrefixPattern, "").trimStart()}`;
 }
 
-function extractKeywords(value: string) {
-  const clean = value
-    .replace(/\[?\d{1,2}:[0-5]\d\s*[-–—]\s*\d{1,2}:[0-5]\d\]?/g, " ")
-    .replace(/\[(?:Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]/giu, " ");
-  const words = clean.match(/[\p{L}\p{N}]+/gu) ?? [];
-  const counts = new Map<string, { count: number; original: string }>();
-  for (const word of words) {
-    const normalized = word.toLocaleLowerCase("vi-VN");
-    if (normalized.length < 5 || keywordStopWords.has(normalized)) continue;
-    const current = counts.get(normalized);
-    counts.set(normalized, { count: (current?.count ?? 0) + 1, original: current?.original ?? word });
-  }
-  return [...counts.values()]
-    .sort((left, right) => right.count - left.count || right.original.length - left.original.length)
-    .slice(0, 6)
-    .map((entry) => entry.original);
+function extractHighlightPhrase(value: string) {
+  const clean = value.replace(deliveryPrefixPattern, "").trim();
+  if (!clean) return "";
+  const clauses = clean
+    .split(/(?<=[.!?])\s+|[;\n]+/u)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+  const cuePattern = /(?:điều quan trọng|thực ra|lý do|bài học|kết quả|chỉ khi|đừng|hãy|không phải|nhưng)/iu;
+  const ranked = clauses.sort((left, right) => {
+    const score = (clause: string) =>
+      (cuePattern.test(clause) ? 20 : 0) +
+      (/\d/u.test(clause) ? 5 : 0) +
+      Math.min(12, clause.split(/\s+/u).length);
+    return score(right) - score(left);
+  });
+  const candidate = ranked[0] ?? clean;
+  const words = candidate.split(/\s+/u);
+  if (words.length < 3) return "";
+  return words.slice(0, Math.min(9, words.length)).join(" ").replace(/[,.!?;:]+$/u, "");
 }
 
-function HighlightedScriptPreview({ value }: { value: string }) {
-  const keywords = extractKeywords(value);
-  if (!keywords.length) return null;
-  const escaped = keywords.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const matcher = new RegExp(`(${escaped.join("|")})`, "giu");
-  const parts = value.split(matcher);
-  const normalizedKeywords = new Set(keywords.map((word) => word.toLocaleLowerCase("vi-VN")));
+function HighlightedLine({ value }: { value: string }) {
+  const phrase = extractHighlightPhrase(value);
+  if (!phrase) return <>{value}</>;
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matcher = new RegExp(`(${escaped})`, "giu");
   return (
-    <div className="mt-3 rounded-2xl border border-[#E5E1D4] bg-[#FFFDF4] p-3">
-      <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#8A6D35]"><Highlighter size={13} /> Từ khóa neo trong kịch bản</p>
-      <p className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs leading-6 text-[#526952]">
-        {parts.map((part, index) => normalizedKeywords.has(part.toLocaleLowerCase("vi-VN"))
-          ? <mark className="rounded bg-[#FFE7A8] px-0.5 font-bold text-[#5E4A22]" key={`${part}-${index}`}>{part}</mark>
-          : <span key={`${part}-${index}`}>{part}</span>)}
-      </p>
-    </div>
+    <>
+      {value.split(matcher).map((part, index) =>
+        part.toLocaleLowerCase("vi-VN") === phrase.toLocaleLowerCase("vi-VN") ? (
+          <mark
+            className="rounded bg-[#FFE49A] px-0.5 font-bold text-[#31583A]"
+            key={`${part}-${index}`}
+          >
+            {part}
+          </mark>
+        ) : (
+          <span key={`${part}-${index}`}>{part}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+function ScriptLineEditor({
+  ariaLabel,
+  highlight,
+  onChange,
+  placeholder,
+  rows,
+  value,
+}: {
+  ariaLabel: string;
+  highlight: boolean;
+  onChange: (value: string) => void;
+  placeholder: string;
+  rows: number;
+  value: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const mode = deliveryMode(value);
+  const spokenText = value.replace(deliveryPrefixPattern, "");
+  const updateSpokenText = (nextValue: string) => {
+    onChange(mode ? withDeliveryMode(nextValue, mode) : nextValue);
+  };
+
+  if (editing) {
+    return (
+      <textarea
+        aria-label={ariaLabel}
+        autoFocus
+        className="min-h-[58px] w-full resize-y rounded-xl border border-[#A9C99D] bg-white px-3 py-2 text-sm font-normal leading-6 text-[#31583A] outline-none ring-2 ring-[#E3F0DE]"
+        onBlur={() => setEditing(false)}
+        onChange={(event) => updateSpokenText(event.target.value)}
+        placeholder={placeholder}
+        rows={rows}
+        value={spokenText}
+      />
+    );
+  }
+
+  return (
+    <button
+      aria-label={`Chỉnh ${ariaLabel.toLocaleLowerCase("vi-VN")}`}
+      className="group/line min-h-[58px] w-full rounded-xl border border-transparent bg-[#FFFDF9] px-3 py-2 text-left transition hover:border-[#D5E5CF] hover:bg-white"
+      onClick={() => setEditing(true)}
+      type="button"
+    >
+      <span className="block whitespace-pre-wrap text-sm font-normal leading-6 text-[#31583A]">
+        {spokenText.trim() ? (
+          highlight ? <HighlightedLine value={spokenText} /> : spokenText
+        ) : (
+          <span className="text-[#A3AAA1]">{placeholder}</span>
+        )}
+      </span>
+      <span className="mt-1.5 inline-flex items-center gap-1 text-[9px] font-bold text-[#8A9A87] opacity-0 transition group-hover/line:opacity-100 group-focus/line:opacity-100">
+        <PencilLine size={10} /> Nhấn để chỉnh lời thoại
+      </span>
+    </button>
   );
 }
 
@@ -412,6 +472,9 @@ function TextSection({
                 </div>
                 <div>
                   <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#6D836C]">
+                      <Sparkles size={10} /> Emsen đề xuất:
+                    </span>
                     {(["Nói trực tiếp", "Voice-over"] as const).map((mode) => (
                       <button
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-bold ${deliveryMode(segment.text) === mode ? "bg-[#EAF6E4] text-[#31583A]" : "border border-[#E3E8DF] bg-white text-[#879487]"}`}
@@ -424,13 +487,13 @@ function TextSection({
                       </button>
                     ))}
                   </div>
-                  <textarea
-                    aria-label={`${title} ${segment.label}`}
-                    className="min-h-[58px] w-full resize-y rounded-xl border border-transparent bg-[#FFFDF9] px-3 py-2 text-sm font-normal leading-6 text-[#31583A] outline-none transition hover:border-[#E8DED8] focus:border-[#A9C99D] focus:bg-white focus:ring-2 focus:ring-[#E3F0DE]"
+                  <ScriptLineEditor
+                    ariaLabel={`${title} ${segment.label}`}
+                    highlight={section === "hook" || section === "body"}
+                    onChange={(nextValue) => updateTimelineSegment(index, nextValue)}
+                    placeholder={placeholder}
                     rows={section === "body" ? 2 : 1}
                     value={segment.text}
-                    placeholder={placeholder}
-                    onChange={(event) => updateTimelineSegment(index, event.target.value)}
                   />
                 </div>
               </div>
@@ -469,7 +532,6 @@ function TextSection({
           ) : null}
         </>
       )}
-      {value.trim() ? <HighlightedScriptPreview value={value} /> : null}
       {assistantOpen && <AiPrompt section={section} busy={busy} currentValue={value} enabled={aiConfigured} onAsk={(prompt, referenceAssets) => onAssist(section, prompt, referenceAssets)} {...(section === "cta" ? { onApplyAlternative: onChange } : {})} onClose={() => setAssistantOpen(false)} onSettings={onSettings} />}
     </section>
   );

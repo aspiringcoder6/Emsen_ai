@@ -1,6 +1,7 @@
 import type { ContentPillarDto } from "@creator-flow/contracts";
-import { ChevronDown, Layers3, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronDown, Layers3, Plus, Trash2 } from "lucide-react";
 import { directionInputClass } from "./DirectionField";
+import { DirectionAiPrompt } from "./DirectionAiPrompt";
 
 const colors = ["#46A82D", "#73A77A", "#D3A461", "#AF96C6", "#81AFBA"];
 
@@ -8,7 +9,7 @@ type Props = {
   canGenerate: boolean;
   disabled: boolean;
   onChange: (value: ContentPillarDto[]) => void;
-  onRegenerate: () => void;
+  onRegenerate: (instruction: string) => void;
   pillars: ContentPillarDto[];
 };
 
@@ -162,15 +163,13 @@ export function ContentPillarsEditor({
           >
             <Plus size={15} /> Thêm trụ cột
           </button>
-          <button
-            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-bold text-[#3F7D3D] hover:bg-[#F1F8EC] disabled:opacity-40"
-            disabled={disabled || !canGenerate}
-            onClick={onRegenerate}
-            type="button"
-          >
-            <RefreshCw size={13} /> Nhờ Emsen tạo lại các trụ cột
-          </button>
         </div>
+        <DirectionAiPrompt
+          canGenerate={canGenerate}
+          disabled={disabled}
+          onSubmit={onRegenerate}
+          subject="Trụ cột nội dung"
+        />
       </div>
     </details>
   );

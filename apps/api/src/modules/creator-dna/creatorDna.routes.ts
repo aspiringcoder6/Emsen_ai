@@ -64,13 +64,13 @@ function stringList(body: Record<string, unknown>, key: string) {
   return value.map((item) => (item as string).trim());
 }
 
-function parseProfile(value: unknown): CreatorDnaProfileDto {
+export function parseCreatorDnaProfile(value: unknown): CreatorDnaProfileDto {
   const body = objectBody(value);
   return {
     audience: textField(body, "audience", 2_000),
     boundaries: textField(body, "boundaries", 2_000),
     displayName: textField(body, "displayName", 80),
-    niche: textField(body, "niche", 120),
+    niche: textField(body, "niche", 2_000),
     platforms: stringList(body, "platforms"),
     toneTraits: stringList(body, "toneTraits"),
   };
@@ -93,7 +93,7 @@ function parseSaveOnboarding(value: unknown): SaveCreatorDnaOnboardingRequestDto
 
   return {
     currentStep: currentStep as number,
-    profile: parseProfile(body.profile),
+    profile: parseCreatorDnaProfile(body.profile),
     status,
   };
 }
@@ -137,7 +137,10 @@ creatorDnaRouter.put("/onboarding", async (request, response) => {
 creatorDnaRouter.post("/onboarding/complete", async (request, response) => {
   const body = objectBody(request.body);
   response.json(
-    await completeCreatorDnaOnboarding(request.auth!.userId, parseProfile(body.profile)),
+    await completeCreatorDnaOnboarding(
+      request.auth!.userId,
+      parseCreatorDnaProfile(body.profile),
+    ),
   );
 });
 

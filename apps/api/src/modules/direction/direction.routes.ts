@@ -28,8 +28,17 @@ directionRouter.post("/versions", async (request, response) => {
 directionRouter.post("/generate", async (request, response) => {
   const body = object(request.body);
   if (!["all", "positioning", "tone", "audience", "pillars"].includes(body.section as string)) throw new HttpError(400, "INVALID_SECTION", "Phần định hướng không hợp lệ.");
+  if (
+    body.instruction !== undefined &&
+    (typeof body.instruction !== "string" || body.instruction.length > 1200)
+  ) {
+    throw new HttpError(400, "INVALID_INSTRUCTION", "Yêu cầu chỉnh định hướng không hợp lệ.");
+  }
   response.status(201).json(await generateDirection(request.auth!.userId, {
     baseVersion: parseBaseVersion(body.baseVersion), brief: parseBrief(body.brief), section: body.section as DirectionSection | "all",
     ...(body.section !== "all" ? { content: parseContent(body.content) } : {}),
+    ...(typeof body.instruction === "string" && body.instruction.trim()
+      ? { instruction: body.instruction.trim() }
+      : {}),
   }));
 });

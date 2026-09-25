@@ -51,4 +51,5 @@ export type GenerateDirectionRequestDto = {
   brief: DirectionBriefDto;
   section: DirectionSection | "all";
   content?: DirectionContentDto;
+  instruction?: string;
 };

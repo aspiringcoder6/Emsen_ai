@@ -336,7 +336,7 @@ export const generatedScriptResponseSchema = {
       type: "string",
     },
     body: {
-      description: "Lời thoại nội dung chính đã phát triển đầy đủ, chia thành nhiều dòng timestamp nhỏ; mỗi dòng có nhãn cách thể hiện.",
+      description: "Bản lời thoại nội dung chính hoàn chỉnh ngay từ lần đề xuất đầu tiên, chia thành nhiều dòng timestamp nhỏ; mỗi dòng có nhãn cách thể hiện.",
       type: "string",
     },
     cta: {

@@ -68,11 +68,10 @@ export const creatorDnaQuestions: CreatorDnaQuestion[] = [
     id: "toneTraits",
     phase: "Chất giọng",
     title: "Bạn muốn nội dung của mình mang phong cách như thế nào?",
-    description: "Chọn tối đa 3 nét gần với bạn nhất.",
+    description: "Chọn một hoặc nhiều nét gần với bạn nhất.",
     required: false,
     signal: "Giọng điệu và cá tính",
     kind: "multi",
-    selectionLimit: 3,
     options: [
       "Gần gũi, đời thường",
       "Hài hước, dí dỏm",

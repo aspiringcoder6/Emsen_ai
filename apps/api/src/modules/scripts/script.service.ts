@@ -272,6 +272,8 @@ const contentStructureLibrary = `Chọn đúng một cấu trúc chính theo d�
 - Vlog/POV: Hook/Open loop → Các khoảnh khắc có chọn lọc → Insight → Payoff → CTA.
 - Reply comment: Comment → Trả lời trực diện → Giải thích/câu chuyện → Ví dụ → Kết luận → CTA.`;
 
+const hookTechniqueLibrary = `Chọn một cơ chế Hook phù hợp nhất với mục tiêu và khán giả: tuyên bố bất ngờ nhưng đúng sự thật; quan điểm khác biệt có căn cứ; câu hỏi tạo đồng cảm; trải nghiệm cá nhân thật; lời hứa về mẹo hoặc lợi ích cụ thể; open loop về một diễn biến đáng chờ; hoặc lời mời thử thách phù hợp. Hook phải liên quan trực tiếp đến phần nội dung tiếp theo, không phóng đại và không dùng clickbait rỗng.`;
+
 function recommendedWordRange(durationSeconds: number) {
   return scriptWordBudget(durationSeconds).total;
 }
@@ -392,8 +394,10 @@ async function generateInitialContent(
     const systemPrompt = `Bạn là trợ lý phát triển kịch bản của Emsen. Viết tiếng Việt tự nhiên, cụ thể, có quan điểm và quay được.
 Nếu creator đã chọn creative concept, phát triển đúng concept đó; nếu chưa chọn, tự đề xuất một góc phù hợp brief, lịch nội dung và Creator DNA. Chọn cấu trúc theo đúng dạng video thay vì ép mọi nội dung vào cùng một công thức. Nếu thiếu trải nghiệm thật, không bịa; diễn đạt trung thực hoặc để ngỏ chi tiết cần creator xác nhận.
 ${contentStructureLibrary}
-Hook phải ngắn, tự nhiên, đủ tò mò hoặc quan điểm rõ và nằm trong 3–5 giây đầu. CTA cũng chỉ kéo dài 3–5 giây, phục vụ đúng hành động người dùng đã chọn; không mặc định kêu gọi follow.
+${hookTechniqueLibrary}
+Hook phải ngắn, tự nhiên và nằm trong 3–5 giây đầu. CTA cũng chỉ kéo dài 3–5 giây, phục vụ đúng hành động người dùng đã chọn; không mặc định kêu gọi follow.
 Chỉ tạo Hook, Nội dung và CTA ở bước này. Không tạo storyboard trước khi creator chốt lời thoại.
+Phải trả về một bản lời thoại hoàn chỉnh ngay trong lần đề xuất đầu tiên, không trả về outline, gạch đầu dòng hướng dẫn hay đoạn giữ chỗ để creator tự viết tiếp.
 
 Bắt buộc tạo bố cục thời gian linh hoạt theo chính nội dung trong input:
 - Mỗi đoạn lời thoại bắt đầu bằng timestamp đúng dạng [0:00–0:05].
@@ -591,7 +595,7 @@ export async function deleteScript(userId: string, scriptId: string) {
 
 const assisting = new Set<string>();
 const textAssistGuidance = {
-  hook: "Giữ đúng creative concept đã chọn. Hook phải nằm trong 3–5 giây, mở tự nhiên, đủ tò mò hoặc có quan điểm rõ; tránh giật gân và công thức sáo rỗng. Nếu có mẫu tham chiếu, học kỹ thuật, nhịp và cấu trúc nhưng không chép nguyên văn.",
+  hook: `Giữ đúng creative concept đã chọn. Hook phải nằm trong 3–5 giây và chọn một kỹ thuật phù hợp. ${hookTechniqueLibrary} Nếu có mẫu tham chiếu, học kỹ thuật, nhịp và cấu trúc nhưng không chép nguyên văn.`,
   body: `Chọn cấu trúc đúng dạng video và triển khai đủ logic. ${contentStructureLibrary} Chỉ dùng trải nghiệm và dữ kiện có trong input; thay phần chung chung bằng chi tiết thật đã có, tuyệt đối không tự bịa.`,
   cta: "CTA phải nằm trong 3–5 giây. Trước hết bám đúng hành động người dùng chọn, rồi đưa ra lời thoại tự nhiên phù hợp nội dung, tone và mạch cảm xúc. Tránh mặc định kêu gọi follow và tránh thúc ép.",
 } as const;
