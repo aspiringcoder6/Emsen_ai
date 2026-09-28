@@ -11,6 +11,7 @@ test("video projects keep the script context and persist reviewed transcripts", 
     getVideoPlayback,
     getVideoProject,
     getVideoWorkspace,
+    updateVideoCutDraft,
     updateVideoTranscript,
   } = await import("../src/modules/video/video.service.js");
   await migrateDatabase();
@@ -95,6 +96,73 @@ test("video projects keep the script context and persist reviewed transcripts", 
     assert.equal(reviewed.transcript?.status, "approved");
     assert.equal(reviewed.transcript?.segments[0]?.text, "Bản người dùng đã sửa");
     assert.equal(reviewed.status, "transcript-ready");
+
+    const pauseDecisionId = randomUUID();
+    await database.query(
+      `INSERT INTO video_cut_drafts (
+         project_id, user_id, transcript_revision, status, source, model,
+         original_duration_seconds, estimated_duration_seconds, decisions
+       ) VALUES ($1, $2, 2, 'draft', 'ai', 'test-model', 60, 56, $3::jsonb)`,
+      [created.id, userId, JSON.stringify([
+        {
+          action: "keep", confidence: 0.9, endSeconds: 5, id: segmentId,
+          kind: "speech", reason: "Giữ ý chính", segmentId, startSeconds: 0,
+          suggestedAction: "keep", text: "Bản người dùng đã sửa",
+        },
+        {
+          action: "cut", confidence: 0.95, endSeconds: 9, id: pauseDecisionId,
+          kind: "pause", reason: "Khoảng lặng dài", segmentId: null, startSeconds: 5,
+          suggestedAction: "cut", text: "Khoảng lặng dài",
+        },
+      ])],
+    );
+    const savedCut = await updateVideoCutDraft(userId, created.id, {
+      decisions: [
+        { action: "keep", id: segmentId },
+        { action: "keep", id: pauseDecisionId },
+      ],
+      revision: 1,
+      status: "draft",
+    });
+    assert.equal(savedCut.cutDraft?.revision, 2);
+    const previewAssetId = randomUUID();
+    await database.query(
+      `INSERT INTO media_assets (
+         id, project_id, user_id, kind, status, file_name, mime_type, size_bytes,
+         object_key, idempotency_key, metadata
+       ) VALUES ($1, $2, $3, 'output', 'ready', 'preview.mp4', 'video/mp4', 2048, $4, $5, $6::jsonb)`,
+      [
+        previewAssetId,
+        created.id,
+        userId,
+        `users/${userId}/projects/${created.id}/preview/${previewAssetId}.mp4`,
+        `preview-${previewAssetId}`,
+        JSON.stringify({ cutRevision: 2, durationSeconds: 60, purpose: "cut-preview" }),
+      ],
+    );
+    const previewPlayback = await getVideoPlayback(userId, created.id, previewAssetId);
+    assert.equal(previewPlayback.assetId, previewAssetId);
+    const approvedCut = await updateVideoCutDraft(userId, created.id, {
+      decisions: [
+        { action: "keep", id: segmentId },
+        { action: "keep", id: pauseDecisionId },
+      ],
+      revision: 2,
+      status: "approved",
+    });
+    assert.equal(approvedCut.cutDraft?.status, "approved");
+    assert.equal(approvedCut.cutDraft?.estimatedDurationSeconds, 60);
+    assert.equal(approvedCut.cutPreview?.assetId, previewAssetId);
+    assert.equal(approvedCut.cutPreview?.stale, false);
+    assert.equal(approvedCut.status, "ready-to-render");
+
+    const changedTranscript = await updateVideoTranscript(userId, created.id, {
+      revision: reviewed.transcript!.revision,
+      segments: reviewed.transcript!.segments,
+      status: "approved",
+    });
+    assert.equal(changedTranscript.cutDraft?.stale, true);
+    assert.equal(changedTranscript.status, "transcript-ready");
 
     const current = await getVideoProject(userId, created.id);
     assert.equal(current.script?.id, script.id);

@@ -62,6 +62,9 @@ không đi qua bộ nhớ API. Khi deploy, cấu hình nhóm biến `MEDIA_STORA
   hoặc upload 1–10 clip MP4/MOV/WebM (tối đa 2 GB).
 - Worker dùng FFprobe để kiểm tra video dọc và Gemini để tạo transcript tiếng Việt có
   timestamp; người dùng sửa và duyệt transcript trước bước Smart Cut.
+- Smart Cut dùng Gemini để đề xuất giữ/cắt, sau đó worker tạo proxy MP4 360×640 bằng
+  FFmpeg để người dùng nghe mạch nối trước khi duyệt. Preview nằm trong bucket riêng tư
+  và không ghi đè video nguồn.
 
 Khi deploy, `apps/worker` phải chạy như một Background Worker riêng với lệnh
 `npm run start --workspace @creator-flow/worker`. Worker dùng chung `DATABASE_URL`,

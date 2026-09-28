@@ -4,8 +4,12 @@ import type {
   CreateVideoProjectRequestDto,
   CreateVideoUploadRequestDto,
   ScriptDocumentDto,
+  StartVideoCutPreviewRequestDto,
   VideoAssetDto,
   VideoCaptionPreset,
+  VideoCutDecisionDto,
+  VideoCutDraftDto,
+  VideoCutPreviewDto,
   VideoJobDto,
   VideoProjectDto,
   VideoProjectScriptDto,
@@ -14,6 +18,7 @@ import type {
   VideoProjectStatus,
   VideoPlaybackTicketDto,
   VideoTranscriptDto,
+  UpdateVideoCutDraftRequestDto,
   UpdateVideoTranscriptRequestDto,
   VideoUploadTicketDto,
   VideoWorkspaceDto,
@@ -56,6 +61,7 @@ type AssetRow = {
   file_name: string;
   id: string;
   kind: VideoAssetDto["kind"];
+  metadata?: Record<string, unknown>;
   mime_type: string;
   project_id: string;
   size_bytes: number | string;
@@ -83,6 +89,19 @@ type TranscriptRow = {
   segments: VideoTranscriptDto["segments"];
   source: "ai";
   status: VideoTranscriptDto["status"];
+  updated_at: Date | string;
+};
+
+type CutDraftRow = {
+  decisions: VideoCutDecisionDto[];
+  estimated_duration_seconds: number;
+  model: string | null;
+  original_duration_seconds: number;
+  project_id: string;
+  revision: number;
+  source: "ai";
+  status: VideoCutDraftDto["status"];
+  transcript_revision: number;
   updated_at: Date | string;
 };
 
@@ -149,6 +168,21 @@ function transcriptDto(row: TranscriptRow): VideoTranscriptDto {
   };
 }
 
+function cutDraftDto(row: CutDraftRow, transcriptRevision: number | null): VideoCutDraftDto {
+  return {
+    decisions: Array.isArray(row.decisions) ? row.decisions : [],
+    estimatedDurationSeconds: Number(row.estimated_duration_seconds),
+    model: row.model,
+    originalDurationSeconds: Number(row.original_duration_seconds),
+    revision: row.revision,
+    source: row.source,
+    stale: transcriptRevision !== null && row.transcript_revision !== transcriptRevision,
+    status: row.status,
+    transcriptRevision: row.transcript_revision,
+    updatedAt: iso(row.updated_at),
+  };
+}
+
 async function loadProjects(userId: string, projectId?: string) {
   const projectResult = await database.query<ProjectRow>(
     `SELECT projects.id, projects.title, projects.status, projects.revision,
@@ -164,9 +198,9 @@ async function loadProjects(userId: string, projectId?: string) {
   );
   if (!projectResult.rows.length) return [];
   const ids = projectResult.rows.map((row) => row.id);
-  const [assetResult, jobResult, transcriptResult] = await Promise.all([
+  const [assetResult, jobResult, transcriptResult, cutDraftResult] = await Promise.all([
     database.query<AssetRow>(
-      `SELECT id, project_id, kind, status, file_name, mime_type, size_bytes, created_at, updated_at
+      `SELECT id, project_id, kind, status, file_name, mime_type, size_bytes, metadata, created_at, updated_at
        FROM media_assets
        WHERE user_id = $1 AND project_id = ANY($2::uuid[])
          AND (status <> 'pending-upload' OR upload_expires_at > NOW())
@@ -187,12 +221,23 @@ async function loadProjects(userId: string, projectId?: string) {
        WHERE user_id = $1 AND project_id = ANY($2::uuid[])`,
       [userId, ids],
     ),
+    database.query<CutDraftRow>(
+      `SELECT project_id, transcript_revision, revision, status, source, model,
+              original_duration_seconds, estimated_duration_seconds, decisions, updated_at
+       FROM video_cut_drafts
+       WHERE user_id = $1 AND project_id = ANY($2::uuid[])`,
+      [userId, ids],
+    ),
   ]);
   const assetsByProject = new Map<string, VideoAssetDto[]>();
+  const cutPreviewByProject = new Map<string, AssetRow>();
   for (const row of assetResult.rows) {
     const items = assetsByProject.get(row.project_id) ?? [];
     items.push(assetDto(row));
     assetsByProject.set(row.project_id, items);
+    if (row.kind === "output" && row.status === "ready" && row.metadata?.purpose === "cut-preview") {
+      cutPreviewByProject.set(row.project_id, row);
+    }
   }
   const jobsByProject = new Map<string, VideoJobDto[]>();
   for (const row of jobResult.rows) {
@@ -201,13 +246,28 @@ async function loadProjects(userId: string, projectId?: string) {
     jobsByProject.set(row.project_id, items);
   }
   const transcriptByProject = new Map(transcriptResult.rows.map((row) => [row.project_id, transcriptDto(row)]));
+  const cutDraftByProject = new Map(cutDraftResult.rows.map((row) => [row.project_id, row]));
   return projectResult.rows.map<VideoProjectDto>((row) => {
     const currentScript = row.script_payload ? scriptSummary(row.script_payload) : null;
     const snapshot = row.script_snapshot;
     const teleprompterContent = row.script_payload?.content ?? snapshot?.content;
+    const transcript = transcriptByProject.get(row.id) ?? null;
+    const cutDraft = cutDraftByProject.get(row.id);
+    const previewAsset = cutPreviewByProject.get(row.id);
+    const previewCutRevision = Number(previewAsset?.metadata?.cutRevision);
+    const cutPreview: VideoCutPreviewDto | null = previewAsset && Number.isInteger(previewCutRevision) ? {
+      assetId: previewAsset.id,
+      createdAt: iso(previewAsset.created_at),
+      cutRevision: previewCutRevision,
+      durationSeconds: Number(previewAsset.metadata?.durationSeconds) || 0,
+      stale: !cutDraft || previewCutRevision !== cutDraft.revision,
+      updatedAt: iso(previewAsset.updated_at),
+    } : null;
     return {
       assets: assetsByProject.get(row.id) ?? [],
       createdAt: iso(row.created_at),
+      cutDraft: cutDraft ? cutDraftDto(cutDraft, transcript?.revision ?? null) : null,
+      cutPreview,
       id: row.id,
       jobs: jobsByProject.get(row.id) ?? [],
       revision: row.revision,
@@ -229,7 +289,7 @@ async function loadProjects(userId: string, projectId?: string) {
         scriptRevision: row.script_payload?.revision ?? snapshot?.revision ?? 1,
       },
       title: row.title,
-      transcript: transcriptByProject.get(row.id) ?? null,
+      transcript,
       updatedAt: iso(row.updated_at),
     };
   });
@@ -482,7 +542,11 @@ export async function getVideoPlayback(
      JOIN media_projects AS projects ON projects.id = assets.project_id
      WHERE assets.id = $1 AND assets.project_id = $2
        AND assets.user_id = $3 AND projects.user_id = $3
-       AND assets.kind = 'source' AND assets.status IN ('uploaded', 'ready')`,
+       AND assets.status IN ('uploaded', 'ready')
+       AND (
+         assets.kind = 'source'
+         OR (assets.kind = 'output' AND assets.metadata->>'purpose' = 'cut-preview')
+       )`,
     [assetId, projectId, userId],
   );
   const asset = result.rows[0];
@@ -601,5 +665,277 @@ export async function updateVideoTranscript(
      WHERE id = $1 AND user_id = $2`,
     [projectId, userId],
   );
+  return getVideoProject(userId, projectId);
+}
+
+export async function startVideoCutSuggestion(
+  userId: string,
+  projectId: string,
+  idempotencyKey: string,
+) {
+  const aiSettings = await getAiKeySettings(userId);
+  if (aiSettings.source === "none") {
+    throw new HttpError(503, "AI_NOT_CONFIGURED", "Hãy kết nối Google AI trong Cài đặt trước khi tạo gợi ý Smart Cut.");
+  }
+  const client = await database.connect();
+  try {
+    await client.query("BEGIN");
+    const projectResult = await client.query<{ status: VideoProjectStatus }>(
+      `SELECT status FROM media_projects WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+      [projectId, userId],
+    );
+    const status = projectResult.rows[0]?.status;
+    if (!status) throw new HttpError(404, "VIDEO_PROJECT_NOT_FOUND", "Không tìm thấy dự án video này.");
+    if (["rendering", "completed"].includes(status)) {
+      throw new HttpError(409, "VIDEO_CUT_LOCKED", "Video đang được xuất hoặc đã hoàn thành nên chưa thể tạo lại Smart Cut.");
+    }
+
+    const existingJob = await client.query<{ id: string }>(
+      `SELECT id FROM media_jobs
+       WHERE project_id = $1 AND type = 'suggest-cuts' AND idempotency_key = $2`,
+      [projectId, idempotencyKey],
+    );
+    if (existingJob.rows[0]) {
+      await client.query("COMMIT");
+      return getVideoProject(userId, projectId);
+    }
+    const transcriptResult = await client.query<{
+      revision: number;
+      segments: VideoTranscriptDto["segments"];
+      status: VideoTranscriptDto["status"];
+    }>(
+      `SELECT revision, status, segments FROM video_transcripts
+       WHERE project_id = $1 AND user_id = $2`,
+      [projectId, userId],
+    );
+    const transcript = transcriptResult.rows[0];
+    if (!transcript) {
+      throw new HttpError(409, "VIDEO_TRANSCRIPT_REQUIRED", "Hãy tạo và duyệt lời thoại trước khi dùng Smart Cut.");
+    }
+    if (transcript.status !== "approved") {
+      throw new HttpError(409, "VIDEO_TRANSCRIPT_APPROVAL_REQUIRED", "Hãy duyệt lời thoại trước để Emsen không cắt nhầm nội dung.");
+    }
+    if (!Array.isArray(transcript.segments) || !transcript.segments.length) {
+      throw new HttpError(409, "VIDEO_TRANSCRIPT_EMPTY", "Video chưa có lời thoại để tạo gợi ý Smart Cut.");
+    }
+    const activeJob = await client.query<{ id: string }>(
+      `SELECT id FROM media_jobs
+       WHERE project_id = $1 AND type = 'suggest-cuts' AND status IN ('queued', 'running')
+       LIMIT 1`,
+      [projectId],
+    );
+    if (activeJob.rows[0]) {
+      throw new HttpError(409, "VIDEO_CUT_ALREADY_STARTED", "Emsen đang tạo gợi ý Smart Cut cho dự án này.");
+    }
+    await client.query(
+      `INSERT INTO media_jobs (
+         id, project_id, user_id, type, status, progress, idempotency_key, input
+       ) VALUES ($1, $2, $3, 'suggest-cuts', 'queued', 0, $4, $5)`,
+      [randomUUID(), projectId, userId, idempotencyKey, { transcriptRevision: transcript.revision }],
+    );
+    await client.query(
+      `UPDATE media_projects
+       SET status = 'cut-review', revision = revision + 1, updated_at = NOW()
+       WHERE id = $1 AND user_id = $2`,
+      [projectId, userId],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  return getVideoProject(userId, projectId);
+}
+
+export async function updateVideoCutDraft(
+  userId: string,
+  projectId: string,
+  input: UpdateVideoCutDraftRequestDto,
+) {
+  const client = await database.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query<CutDraftRow & { current_transcript_revision: number }>(
+      `SELECT cuts.project_id, cuts.transcript_revision, cuts.revision, cuts.status,
+              cuts.source, cuts.model, cuts.original_duration_seconds,
+              cuts.estimated_duration_seconds, cuts.decisions, cuts.updated_at,
+              transcripts.revision AS current_transcript_revision
+       FROM video_cut_drafts AS cuts
+       JOIN video_transcripts AS transcripts
+         ON transcripts.project_id = cuts.project_id AND transcripts.user_id = cuts.user_id
+       JOIN media_projects AS projects
+         ON projects.id = cuts.project_id AND projects.user_id = cuts.user_id
+       WHERE cuts.project_id = $1 AND cuts.user_id = $2
+       FOR UPDATE OF cuts`,
+      [projectId, userId],
+    );
+    const current = result.rows[0];
+    if (!current) throw new HttpError(404, "VIDEO_CUT_NOT_FOUND", "Dự án chưa có gợi ý Smart Cut để chỉnh.");
+    const activeJob = await client.query<{ id: string }>(
+      `SELECT id FROM media_jobs
+       WHERE project_id = $1 AND user_id = $2 AND type IN ('suggest-cuts', 'preview')
+         AND status IN ('queued', 'running')
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (activeJob.rows[0]) {
+      throw new HttpError(409, "VIDEO_CUT_PROCESSING", "Emsen đang xử lý Smart Cut hoặc preview. Hãy đợi tác vụ hiện tại hoàn tất.");
+    }
+    if (current.revision !== input.revision) {
+      throw new HttpError(409, "VIDEO_CUT_CONFLICT", "Bản Smart Cut đã thay đổi ở nơi khác. Hãy tải lại trước khi lưu.");
+    }
+    if (current.transcript_revision !== current.current_transcript_revision) {
+      throw new HttpError(409, "VIDEO_CUT_STALE", "Lời thoại đã thay đổi. Hãy để Emsen tạo lại gợi ý Smart Cut mới.");
+    }
+    const currentDecisions = Array.isArray(current.decisions) ? current.decisions : [];
+    const actions = new Map(input.decisions.map((decision) => [decision.id, decision.action]));
+    if (actions.size !== currentDecisions.length || currentDecisions.some((decision) => !actions.has(decision.id))) {
+      throw new HttpError(400, "VIDEO_CUT_DECISIONS_MISMATCH", "Danh sách đoạn giữ/cắt không còn khớp với bản Smart Cut hiện tại.");
+    }
+    const decisions = currentDecisions.map((decision) => ({
+      ...decision,
+      action: actions.get(decision.id)!,
+    }));
+    const decisionsChanged = decisions.some(
+      (decision, index) => decision.action !== currentDecisions[index]?.action,
+    );
+    const removedDurationSeconds = decisions.reduce(
+      (total, decision) => total + (decision.action === "cut" ? decision.endSeconds - decision.startSeconds : 0),
+      0,
+    );
+    const estimatedDurationSeconds = Math.round(Math.max(
+      0,
+      Number(current.original_duration_seconds) - removedDurationSeconds,
+    ) * 100) / 100;
+    if (input.status === "approved" && !decisions.some((decision) => decision.kind === "speech" && decision.action === "keep")) {
+      throw new HttpError(400, "VIDEO_CUT_EMPTY", "Hãy giữ lại ít nhất một đoạn trước khi duyệt Smart Cut.");
+    }
+    const nextRevision = current.revision + (decisionsChanged ? 1 : 0);
+    if (input.status === "approved" && decisions.some((decision) => decision.action === "cut")) {
+      const preview = await client.query<{ id: string }>(
+        `SELECT id FROM media_assets
+         WHERE project_id = $1 AND user_id = $2 AND kind = 'output' AND status = 'ready'
+           AND metadata->>'purpose' = 'cut-preview'
+           AND metadata->>'cutRevision' = $3
+         LIMIT 1`,
+        [projectId, userId, String(nextRevision)],
+      );
+      if (!preview.rows[0]) {
+        throw new HttpError(409, "VIDEO_CUT_PREVIEW_REQUIRED", "Hãy tạo và nghe bản xem thử mới nhất trước khi duyệt Smart Cut.");
+      }
+    }
+    const updated = await client.query<{ revision: number }>(
+      `UPDATE video_cut_drafts
+       SET decisions = $1, estimated_duration_seconds = $2, status = $3,
+           revision = revision + CASE WHEN $4::boolean THEN 1 ELSE 0 END, updated_at = NOW()
+       WHERE project_id = $5 AND user_id = $6 AND revision = $7
+       RETURNING revision`,
+      [JSON.stringify(decisions), estimatedDurationSeconds, input.status, decisionsChanged, projectId, userId, input.revision],
+    );
+    if (!updated.rows[0]) {
+      throw new HttpError(409, "VIDEO_CUT_CONFLICT", "Bản Smart Cut đã thay đổi ở nơi khác. Hãy tải lại trước khi lưu.");
+    }
+    await client.query(
+      `UPDATE media_projects
+       SET status = $1, revision = revision + 1, updated_at = NOW()
+       WHERE id = $2 AND user_id = $3`,
+      [input.status === "approved" ? "ready-to-render" : "cut-review", projectId, userId],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  return getVideoProject(userId, projectId);
+}
+
+export async function startVideoCutPreview(
+  userId: string,
+  projectId: string,
+  input: StartVideoCutPreviewRequestDto,
+) {
+  const client = await database.connect();
+  try {
+    await client.query("BEGIN");
+    const projectResult = await client.query<{ status: VideoProjectStatus }>(
+      `SELECT status FROM media_projects WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+      [projectId, userId],
+    );
+    const projectStatus = projectResult.rows[0]?.status;
+    if (!projectStatus) throw new HttpError(404, "VIDEO_PROJECT_NOT_FOUND", "Không tìm thấy dự án video này.");
+    if (["rendering", "completed"].includes(projectStatus)) {
+      throw new HttpError(409, "VIDEO_PREVIEW_LOCKED", "Video đang được xuất hoặc đã hoàn thành nên chưa thể tạo preview mới.");
+    }
+
+    const existingJob = await client.query<{ id: string }>(
+      `SELECT id FROM media_jobs
+       WHERE project_id = $1 AND type = 'preview' AND idempotency_key = $2`,
+      [projectId, input.idempotencyKey],
+    );
+    if (existingJob.rows[0]) {
+      await client.query("COMMIT");
+      return getVideoProject(userId, projectId);
+    }
+    const cutResult = await client.query<{
+      current_transcript_revision: number;
+      revision: number;
+      transcript_revision: number;
+    }>(
+      `SELECT cuts.revision, cuts.transcript_revision,
+              transcripts.revision AS current_transcript_revision
+       FROM video_cut_drafts AS cuts
+       JOIN video_transcripts AS transcripts
+         ON transcripts.project_id = cuts.project_id AND transcripts.user_id = cuts.user_id
+       WHERE cuts.project_id = $1 AND cuts.user_id = $2`,
+      [projectId, userId],
+    );
+    const cut = cutResult.rows[0];
+    if (!cut) throw new HttpError(409, "VIDEO_CUT_REQUIRED", "Hãy tạo Smart Cut trước khi dựng bản xem thử.");
+    if (cut.revision !== input.cutRevision) {
+      throw new HttpError(409, "VIDEO_CUT_CONFLICT", "Bản Smart Cut đã thay đổi. Hãy thử tạo preview lại từ bản mới nhất.");
+    }
+    if (cut.transcript_revision !== cut.current_transcript_revision) {
+      throw new HttpError(409, "VIDEO_CUT_STALE", "Lời thoại đã thay đổi. Hãy tạo lại Smart Cut trước khi dựng preview.");
+    }
+    const activeJob = await client.query<{ id: string }>(
+      `SELECT id FROM media_jobs
+       WHERE project_id = $1 AND type IN ('suggest-cuts', 'preview')
+         AND status IN ('queued', 'running')
+       LIMIT 1`,
+      [projectId],
+    );
+    if (activeJob.rows[0]) {
+      throw new HttpError(409, "VIDEO_PREVIEW_ALREADY_STARTED", "Emsen đang xử lý Smart Cut hoặc tạo preview cho dự án này.");
+    }
+    const sources = await client.query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM media_assets
+       WHERE project_id = $1 AND user_id = $2 AND kind = 'source' AND status = 'ready'`,
+      [projectId, userId],
+    );
+    if (!Number(sources.rows[0]?.count)) {
+      throw new HttpError(409, "VIDEO_SOURCE_NOT_READY", "Video nguồn chưa sẵn sàng để dựng preview.");
+    }
+    await client.query(
+      `INSERT INTO media_jobs (
+         id, project_id, user_id, type, status, progress, idempotency_key, input
+       ) VALUES ($1, $2, $3, 'preview', 'queued', 0, $4, $5)`,
+      [randomUUID(), projectId, userId, input.idempotencyKey, { cutRevision: input.cutRevision }],
+    );
+    await client.query(
+      `UPDATE media_projects SET revision = revision + 1, updated_at = NOW()
+       WHERE id = $1 AND user_id = $2`,
+      [projectId, userId],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
   return getVideoProject(userId, projectId);
 }

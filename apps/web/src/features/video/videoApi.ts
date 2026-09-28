@@ -2,7 +2,10 @@ import type {
   CompleteVideoUploadResponseDto,
   CreateVideoProjectRequestDto,
   CreateVideoUploadRequestDto,
+  StartVideoCutPreviewRequestDto,
+  StartVideoCutSuggestionRequestDto,
   StartVideoTranscriptionRequestDto,
+  UpdateVideoCutDraftRequestDto,
   UpdateVideoTranscriptRequestDto,
   VideoProjectDto,
   VideoPlaybackTicketDto,
@@ -44,6 +47,30 @@ export const updateVideoTranscript = (
   body: UpdateVideoTranscriptRequestDto,
 ) => apiRequest<VideoProjectDto>(`/video/projects/${projectId}/transcript`, {
   method: "PUT",
+  body,
+});
+
+export const startVideoCutSuggestion = (
+  projectId: string,
+  body: StartVideoCutSuggestionRequestDto,
+) => apiRequest<VideoProjectDto>(`/video/projects/${projectId}/cuts/suggestions`, {
+  method: "POST",
+  body,
+});
+
+export const updateVideoCutDraft = (
+  projectId: string,
+  body: UpdateVideoCutDraftRequestDto,
+) => apiRequest<VideoProjectDto>(`/video/projects/${projectId}/cut-draft`, {
+  method: "PUT",
+  body,
+});
+
+export const startVideoCutPreview = (
+  projectId: string,
+  body: StartVideoCutPreviewRequestDto,
+) => apiRequest<VideoProjectDto>(`/video/projects/${projectId}/cut-preview`, {
+  method: "POST",
   body,
 });
 

@@ -19,7 +19,7 @@ export type VideoAssetStatus =
   | "ready"
   | "failed";
 
-export type VideoJobType = "probe" | "transcribe" | "suggest-cuts" | "render";
+export type VideoJobType = "probe" | "transcribe" | "suggest-cuts" | "preview" | "render";
 export type VideoJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
 export type VideoCaptionPreset = "emsen-clean" | "none";
 
@@ -70,6 +70,43 @@ export type VideoTranscriptDto = {
   updatedAt: string;
 };
 
+export type VideoCutAction = "keep" | "cut";
+
+export type VideoCutDecisionDto = {
+  action: VideoCutAction;
+  confidence: number;
+  endSeconds: number;
+  id: string;
+  kind: "speech" | "pause";
+  reason: string;
+  segmentId: string | null;
+  startSeconds: number;
+  suggestedAction: VideoCutAction;
+  text: string;
+};
+
+export type VideoCutDraftDto = {
+  decisions: VideoCutDecisionDto[];
+  estimatedDurationSeconds: number;
+  model: string | null;
+  originalDurationSeconds: number;
+  revision: number;
+  source: "ai";
+  stale: boolean;
+  status: "approved" | "draft";
+  transcriptRevision: number;
+  updatedAt: string;
+};
+
+export type VideoCutPreviewDto = {
+  assetId: string;
+  createdAt: string;
+  cutRevision: number;
+  durationSeconds: number;
+  stale: boolean;
+  updatedAt: string;
+};
+
 export type VideoAssetDto = {
   createdAt: string;
   fileName: string;
@@ -94,6 +131,8 @@ export type VideoJobDto = {
 export type VideoProjectDto = {
   assets: VideoAssetDto[];
   createdAt: string;
+  cutDraft: VideoCutDraftDto | null;
+  cutPreview: VideoCutPreviewDto | null;
   id: string;
   jobs: VideoJobDto[];
   revision: number;
@@ -137,9 +176,27 @@ export type StartVideoTranscriptionRequestDto = {
   idempotencyKey: string;
 };
 
+export type StartVideoCutSuggestionRequestDto = {
+  idempotencyKey: string;
+};
+
+export type StartVideoCutPreviewRequestDto = {
+  cutRevision: number;
+  idempotencyKey: string;
+};
+
 export type UpdateVideoTranscriptRequestDto = {
   revision: number;
   segments: VideoTranscriptSegmentDto[];
+  status: "approved" | "draft";
+};
+
+export type UpdateVideoCutDraftRequestDto = {
+  decisions: Array<{
+    action: VideoCutAction;
+    id: string;
+  }>;
+  revision: number;
   status: "approved" | "draft";
 };
 

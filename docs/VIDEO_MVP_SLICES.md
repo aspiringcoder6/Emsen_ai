@@ -27,9 +27,27 @@
 
 ## Slice 3 — Smart Cut
 
-- Phát hiện khoảng lặng và từ đệm từ transcript/audio.
-- Tạo edit-decision list, không tự ghi đè lựa chọn người dùng.
-- UI bật/tắt từng đề xuất và xem tổng thời lượng dự kiến.
+Đã triển khai trong Slice 3.1:
+
+- Chỉ bắt đầu sau khi người dùng duyệt transcript; worker dùng lại Gemini model và Google AI key hiện có.
+- Chỉ gửi tên dự án, thời lượng mục tiêu và transcript có timestamp tới Gemini ở bước này; không gửi lại file video.
+- Gemini đánh giá cả giá trị nội dung và độ an toàn của mạch nối. Đoạn chưa chắc chắn luôn được giữ mặc định.
+- Hook và đoạn kết được bảo vệ; tổng lời nói AI tự đề xuất cắt không vượt quá 35% trong một lần duyệt.
+- Khoảng lặng dài chỉ cắt phần giữa, chừa room tone ở hai đầu để chuẩn bị cho audio crossfade khi render.
+- Tạo edit-decision list có version, gắn với đúng revision của transcript và không ghi đè video nguồn.
+- UI timeline cho phép giữ/cắt từng đoạn, xem thời lượng dự kiến, hoàn tác, dùng lại đề xuất AI và duyệt bản cắt.
+- Nếu transcript thay đổi, bản cắt được đánh dấu cũ và yêu cầu tạo gợi ý mới thay vì âm thầm áp dụng sai timestamp.
+
+Đã triển khai trong Slice 3.2:
+
+- Worker dùng FFmpeg đóng gói cùng ứng dụng để chuẩn hóa các clip và tạo proxy MP4 H.264/AAC 360×640.
+- Edit-decision list được đổi thành các khoảng cần giữ trên timeline toàn cục, hỗ trợ dự án có nhiều clip nguồn.
+- Các khoảng giữ cực ngắn dưới 180 ms giữa hai cuts được gộp để tránh flash hình và tiếng click.
+- Âm thanh fade 70 ms ở hai phía mỗi điểm nối; phần room tone đã chừa từ Slice 3.1 tiếp tục giúp câu nói có nhịp thở.
+- Preview được lưu như output riêng trong bucket private và phát bằng URL có chữ ký; video nguồn không bị thay đổi.
+- Preview luôn gắn với đúng revision của Smart Cut. Sửa lựa chọn giữ/cắt sẽ tự đánh dấu preview cũ.
+- Khi có đoạn bị cắt, người dùng phải tạo và nghe preview mới nhất trước khi có thể duyệt Smart Cut.
+- Chỉ giữ một preview hiện hành trong cơ sở dữ liệu; object preview cũ được dọn sau khi bản mới lưu thành công.
 
 ## Slice 4 — Caption, brand và render
 
@@ -39,7 +57,7 @@
 
 ## Biến môi trường production
 
-Video không được lưu trên filesystem tạm của Render. API cần một bucket S3-compatible riêng tư:
+Video không được lưu lâu dài trên filesystem tạm của Render. Worker chỉ dùng thư mục tạm khi xử lý rồi xóa; API cần một bucket S3-compatible riêng tư:
 
 - `MEDIA_STORAGE_ENDPOINT`
 - `MEDIA_STORAGE_REGION`
@@ -48,6 +66,7 @@ Video không được lưu trên filesystem tạm của Render. API cần một 
 - `MEDIA_STORAGE_SECRET_KEY`
 - `MEDIA_STORAGE_AUTO_CREATE_BUCKET=false`
 - `MEDIA_UPLOAD_EXPIRES_SECONDS=900`
+- `FFMPEG_BIN` (không bắt buộc; dùng để ghi đè binary đi kèm worker)
 
 Bucket cần cho phép CORS từ domain web đối với `PUT`, `GET` và `HEAD`; quyền của API
 chỉ cần thao tác trên bucket media đã chọn. Bucket luôn để private, URL tải lên/phát

@@ -4,7 +4,10 @@ import { requireAuth } from "../auth/session.js";
 import {
   parseCreateVideoProject,
   parseCreateVideoUpload,
+  parseStartVideoCutPreview,
+  parseStartVideoCutSuggestion,
   parseStartVideoTranscription,
+  parseUpdateVideoCutDraft,
   parseUpdateVideoTranscript,
   parseUuid,
 } from "./video.schema.js";
@@ -15,7 +18,10 @@ import {
   getVideoProject,
   getVideoPlayback,
   getVideoWorkspace,
+  startVideoCutPreview,
+  startVideoCutSuggestion,
   startVideoTranscription,
+  updateVideoCutDraft,
   updateVideoTranscript,
 } from "./video.service.js";
 
@@ -96,6 +102,37 @@ videoRouter.put("/projects/:projectId/transcript", async (request, response) => 
       request.auth!.userId,
       projectId(request.params.projectId),
       parseUpdateVideoTranscript(request.body),
+    ),
+  );
+});
+
+videoRouter.post("/projects/:projectId/cuts/suggestions", async (request, response) => {
+  const input = parseStartVideoCutSuggestion(request.body);
+  response.status(202).json(
+    await startVideoCutSuggestion(
+      request.auth!.userId,
+      projectId(request.params.projectId),
+      input.idempotencyKey,
+    ),
+  );
+});
+
+videoRouter.put("/projects/:projectId/cut-draft", async (request, response) => {
+  response.json(
+    await updateVideoCutDraft(
+      request.auth!.userId,
+      projectId(request.params.projectId),
+      parseUpdateVideoCutDraft(request.body),
+    ),
+  );
+});
+
+videoRouter.post("/projects/:projectId/cut-preview", async (request, response) => {
+  response.status(202).json(
+    await startVideoCutPreview(
+      request.auth!.userId,
+      projectId(request.params.projectId),
+      parseStartVideoCutPreview(request.body),
     ),
   );
 });

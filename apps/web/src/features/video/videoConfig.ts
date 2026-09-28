@@ -11,7 +11,7 @@ export const videoProjectStatusConfig: Record<VideoProjectStatus, {
   transcribing: { label: "Đang tạo lời thoại", color: "#496D8B", surface: "#EAF3FA" },
   "transcript-ready": { label: "Chờ duyệt lời thoại", color: "#72506B", surface: "#F3EAF1" },
   "cut-review": { label: "Chờ duyệt Smart Cut", color: "#72506B", surface: "#F3EAF1" },
-  "ready-to-render": { label: "Sẵn sàng xuất", color: "#3F8240", surface: "#EAF6E4" },
+  "ready-to-render": { label: "Smart Cut đã duyệt", color: "#3F8240", surface: "#EAF6E4" },
   rendering: { label: "Đang xuất video", color: "#496D8B", surface: "#EAF3FA" },
   completed: { label: "Đã hoàn thành", color: "#466D67", surface: "#E5F2EF" },
   failed: { label: "Cần thử lại", color: "#9A4B42", surface: "#FFF0EC" },

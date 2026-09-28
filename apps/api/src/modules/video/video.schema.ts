@@ -1,7 +1,10 @@
 import type {
   CreateVideoProjectRequestDto,
   CreateVideoUploadRequestDto,
+  StartVideoCutPreviewRequestDto,
+  StartVideoCutSuggestionRequestDto,
   StartVideoTranscriptionRequestDto,
+  UpdateVideoCutDraftRequestDto,
   UpdateVideoTranscriptRequestDto,
 } from "@creator-flow/contracts";
 import { HttpError } from "../../shared/http.js";
@@ -82,6 +85,22 @@ export function parseStartVideoTranscription(value: unknown): StartVideoTranscri
   return { idempotencyKey: idempotencyKey(body.idempotencyKey) };
 }
 
+export function parseStartVideoCutSuggestion(value: unknown): StartVideoCutSuggestionRequestDto {
+  const body = object(value);
+  return { idempotencyKey: idempotencyKey(body.idempotencyKey) };
+}
+
+export function parseStartVideoCutPreview(value: unknown): StartVideoCutPreviewRequestDto {
+  const body = object(value);
+  if (!Number.isInteger(body.cutRevision) || (body.cutRevision as number) < 1) {
+    throw new HttpError(400, "INVALID_CUT_REVISION", "Phiên bản Smart Cut không hợp lệ.");
+  }
+  return {
+    cutRevision: body.cutRevision as number,
+    idempotencyKey: idempotencyKey(body.idempotencyKey),
+  };
+}
+
 export function parseUpdateVideoTranscript(value: unknown): UpdateVideoTranscriptRequestDto {
   const body = object(value);
   if (!Number.isInteger(body.revision) || (body.revision as number) < 1) {
@@ -115,4 +134,30 @@ export function parseUpdateVideoTranscript(value: unknown): UpdateVideoTranscrip
     }
   });
   return { revision: body.revision as number, segments, status: body.status };
+}
+
+export function parseUpdateVideoCutDraft(value: unknown): UpdateVideoCutDraftRequestDto {
+  const body = object(value);
+  if (!Number.isInteger(body.revision) || (body.revision as number) < 1) {
+    throw new HttpError(400, "INVALID_CUT_REVISION", "Phiên bản Smart Cut không hợp lệ.");
+  }
+  if (body.status !== "draft" && body.status !== "approved") {
+    throw new HttpError(400, "INVALID_CUT_STATUS", "Trạng thái Smart Cut không hợp lệ.");
+  }
+  if (!Array.isArray(body.decisions) || !body.decisions.length || body.decisions.length > 2_000) {
+    throw new HttpError(400, "INVALID_CUT_DECISIONS", "Danh sách đoạn giữ/cắt không hợp lệ.");
+  }
+  const seen = new Set<string>();
+  const decisions = body.decisions.map((value, index) => {
+    const decision = object(value);
+    if (
+      typeof decision.id !== "string" || !/^[0-9a-f-]{36}$/i.test(decision.id) ||
+      (decision.action !== "keep" && decision.action !== "cut") || seen.has(decision.id)
+    ) {
+      throw new HttpError(400, "INVALID_CUT_DECISION", `Lựa chọn Smart Cut ${index + 1} chưa hợp lệ.`);
+    }
+    seen.add(decision.id);
+    return { action: decision.action === "keep" ? "keep" as const : "cut" as const, id: decision.id };
+  });
+  return { decisions, revision: body.revision as number, status: body.status };
 }

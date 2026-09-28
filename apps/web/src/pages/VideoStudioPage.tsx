@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   CreateVideoProjectRequestDto,
+  VideoCutAction,
   VideoProjectDto,
   VideoWorkspaceDto,
 } from "@creator-flow/contracts";
@@ -22,15 +23,20 @@ import {
 } from "lucide-react";
 import { EmsenAvatar } from "../components/branding/EmsenAvatar";
 import { CreateVideoProjectPanel } from "../features/video/components/CreateVideoProjectPanel";
+import { CutPreviewPlayer } from "../features/video/components/CutPreviewPlayer";
 import { SourceVideoUpload, type VideoUploadProgress } from "../features/video/components/SourceVideoUpload";
 import { SourceVideoPlayer } from "../features/video/components/SourceVideoPlayer";
+import { SmartCutEditor } from "../features/video/components/SmartCutEditor";
 import { TeleprompterRecorder } from "../features/video/components/TeleprompterRecorder";
 import { TranscriptEditor } from "../features/video/components/TranscriptEditor";
 import {
   createVideoProject,
   getVideoProject,
   getVideoWorkspace,
+  startVideoCutPreview,
+  startVideoCutSuggestion,
   startVideoTranscription,
+  updateVideoCutDraft,
   updateVideoTranscript,
   uploadVideoSource,
 } from "../features/video/videoApi";
@@ -46,7 +52,8 @@ const pipeline = [
 
 function completedPipelineSteps(project: VideoProjectDto) {
   if (project.status === "completed") return 5;
-  if (project.status === "rendering" || project.status === "ready-to-render") return 4;
+  if (project.status === "rendering") return 4;
+  if (project.status === "ready-to-render") return 3;
   if (project.status === "cut-review") return 2;
   if (project.status === "transcript-ready") return 2;
   if (project.status === "analyzing" || project.status === "transcribing") return 1;
@@ -75,6 +82,8 @@ export function VideoStudioPage({
   const [creating, setCreating] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<VideoUploadProgress | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [cutting, setCutting] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [recorderOpen, setRecorderOpen] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -110,6 +119,7 @@ export function VideoStudioPage({
   }, [active, preferredScriptId, onPreferredScriptHandled]);
 
   const selected = useMemo(() => workspace?.projects.find((project) => project.id === selectedId) ?? null, [selectedId, workspace]);
+  const pollingJob = selected?.jobs.find((job) => ["queued", "running"].includes(job.status));
 
   const replaceProject = (project: VideoProjectDto) => {
     setWorkspace((current) => current ? {
@@ -120,7 +130,7 @@ export function VideoStudioPage({
   };
 
   useEffect(() => {
-    if (!active || !selected || !["analyzing", "transcribing"].includes(selected.status)) return;
+    if (!active || !selected || (!pollingJob && !["analyzing", "transcribing"].includes(selected.status))) return;
     let cancelled = false;
     const refresh = async () => {
       try {
@@ -130,8 +140,18 @@ export function VideoStudioPage({
           ...current,
           projects: [project, ...current.projects.filter((item) => item.id !== project.id)],
         } : current);
-        if (project.status === "transcript-ready") {
-          setNotice("Lời thoại đã sẵn sàng. Bạn hãy đọc lại và sửa những từ chưa đúng trước khi duyệt.");
+        const latestPreviewJob = project.jobs.find((job) => job.type === "preview");
+        const previewActive = project.jobs.some((job) => job.type === "preview" && ["queued", "running"].includes(job.status));
+        if (latestPreviewJob?.status === "failed" && !previewActive) {
+          setError(latestPreviewJob.errorMessage ?? "Emsen chưa tạo được bản preview. Bạn có thể thử lại.");
+        } else if (project.cutPreview && !project.cutPreview.stale && !previewActive) {
+          setNotice("Bản xem thử Smart Cut đã sẵn sàng. Hãy nghe kỹ các điểm nối trước khi duyệt.");
+        } else if (project.status === "transcript-ready") {
+          const failedCut = project.jobs.find((job) => job.type === "suggest-cuts" && job.status === "failed");
+          if (failedCut) setError(failedCut.errorMessage ?? "Emsen chưa tạo được gợi ý Smart Cut. Bạn có thể thử lại.");
+          else setNotice("Lời thoại đã sẵn sàng. Bạn hãy đọc lại và sửa những từ chưa đúng trước khi duyệt.");
+        } else if (project.cutDraft && !project.cutDraft.stale && !project.jobs.some((job) => job.type === "suggest-cuts" && ["queued", "running"].includes(job.status))) {
+          setNotice("Gợi ý Smart Cut đã sẵn sàng. Bạn hãy xem lại từng đoạn trước khi duyệt.");
         } else if (project.status === "failed") {
           const failedJob = project.jobs.find((job) => job.status === "failed");
           setError(failedJob?.errorMessage ?? "Emsen chưa xử lý được video. Bạn có thể thử lại.");
@@ -146,7 +166,7 @@ export function VideoStudioPage({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [active, selected?.id, selected?.status]);
+  }, [active, pollingJob?.id, selected?.id, selected?.status]);
 
   const handleCreate = async (input: CreateVideoProjectRequestDto) => {
     setCreating(true);
@@ -223,12 +243,76 @@ export function VideoStudioPage({
     setNotice(transcriptStatus === "approved" ? "Đã duyệt lời thoại. Dữ liệu đã sẵn sàng cho bước Smart Cut." : "Đã lưu bản nháp lời thoại.");
   };
 
+  const handleStartSmartCut = async () => {
+    if (!selected || cutting) return;
+    setCutting(true);
+    setError("");
+    setNotice("");
+    try {
+      const project = await startVideoCutSuggestion(selected.id, { idempotencyKey: crypto.randomUUID() });
+      replaceProject(project);
+      setNotice("Emsen đang tìm các điểm cắt an toàn và kiểm tra mạch nối giữa các câu.");
+    } catch (cutError) {
+      setError(cutError instanceof Error ? cutError.message : "Chưa bắt đầu Smart Cut được.");
+    } finally {
+      setCutting(false);
+    }
+  };
+
+  const handleSaveCutDraft = async (
+    decisions: Array<{ action: VideoCutAction; id: string }>,
+    cutStatus: NonNullable<VideoProjectDto["cutDraft"]>["status"],
+  ) => {
+    if (!selected?.cutDraft) return;
+    const project = await updateVideoCutDraft(selected.id, {
+      decisions,
+      revision: selected.cutDraft.revision,
+      status: cutStatus,
+    });
+    replaceProject(project);
+    setNotice(cutStatus === "approved"
+      ? "Đã duyệt Smart Cut. Các lựa chọn được lưu để dùng cho bước preview và caption tiếp theo."
+      : "Đã lưu bản nháp Smart Cut.");
+  };
+
+  const handleCreateCutPreview = async (
+    decisions: Array<{ action: VideoCutAction; id: string }>,
+  ) => {
+    if (!selected?.cutDraft || previewing) return;
+    setPreviewing(true);
+    setError("");
+    setNotice("");
+    try {
+      const saved = await updateVideoCutDraft(selected.id, {
+        decisions,
+        revision: selected.cutDraft.revision,
+        status: selected.cutDraft.status,
+      });
+      replaceProject(saved);
+      const cutRevision = saved.cutDraft?.revision;
+      if (!cutRevision) throw new Error("Chưa xác định được phiên bản Smart Cut để tạo preview.");
+      const queued = await startVideoCutPreview(saved.id, {
+        cutRevision,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      replaceProject(queued);
+      setNotice("Emsen đang dựng bản xem thử nhẹ và làm mềm âm thanh ở các điểm nối.");
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : "Chưa tạo được bản preview.");
+      throw previewError;
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   if (!active) return null;
 
   const doneSteps = selected ? completedPipelineSteps(selected) : 0;
   const status = selected ? videoProjectStatusConfig[selected.status] : null;
   const sourceAssets = selected?.assets.filter((asset) => asset.kind === "source" && ["uploaded", "processing", "ready"].includes(asset.status)) ?? [];
   const activeJob = selected?.jobs.find((job) => ["queued", "running"].includes(job.status));
+  const activeCutJob = selected?.jobs.find((job) => job.type === "suggest-cuts" && ["queued", "running"].includes(job.status));
+  const activePreviewJob = selected?.jobs.find((job) => job.type === "preview" && ["queued", "running"].includes(job.status));
   const failedJob = selected?.jobs.find((job) => job.status === "failed");
   const sourceLocked = Boolean(selected && !["setup", "uploaded", "failed"].includes(selected.status));
 
@@ -334,6 +418,29 @@ export function VideoStudioPage({
 
               {selected.transcript && <SourceVideoPlayer assets={sourceAssets} projectId={selected.id} />}
               {selected.transcript && <TranscriptEditor transcript={selected.transcript} onSave={handleSaveTranscript} />}
+
+              {selected.transcript?.status === "approved" && !selected.cutDraft && !activeCutJob && (
+                <section className="flex flex-wrap items-center gap-4 rounded-[22px] border border-[#E5D8E3] bg-gradient-to-r from-[#FBF5FA] to-white p-4 sm:p-5">
+                  <EmsenAvatar emotion="content" className="h-14 w-14 shrink-0" />
+                  <div className="min-w-[220px] flex-1"><p className="text-sm font-bold text-[#5F4B5B]">Tìm điểm cắt an toàn</p><p className="mt-1 text-xs leading-5 text-[#81727D]">Emsen sẽ gửi transcript có timestamp tới Google Gemini để kiểm tra mạch nói; file video không được gửi lại ở bước này. Video gốc luôn được giữ nguyên.</p></div>
+                  <button type="button" disabled={cutting} onClick={() => void handleStartSmartCut()} className="inline-flex items-center gap-2 rounded-xl bg-[#72506B] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{cutting ? <LoaderCircle size={16} className="animate-spin" /> : <Scissors size={16} />} Tạo Smart Cut</button>
+                </section>
+              )}
+
+              {activeCutJob && (
+                <section className="rounded-[22px] border border-[#DCCFDC] bg-gradient-to-r from-[#F8F0F6] to-white p-4 sm:p-5">
+                  <div className="flex items-center gap-4"><EmsenAvatar activity="working" className="h-14 w-14 shrink-0" /><div className="min-w-0 flex-1"><p className="text-sm font-bold text-[#654D60]">Đang kiểm tra mạch nói và điểm cắt…</p><p className="mt-1 text-xs leading-5 text-[#81727D]">Emsen ưu tiên giữ lại khi chưa chắc chắn để video không bị cụt ý.</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#E9DDE7]"><span className="block h-full rounded-full bg-[#9B6E91] transition-all" style={{ width: `${Math.max(4, activeCutJob.progress)}%` }} /></div><p className="mt-1.5 text-right text-[10px] font-bold text-[#8B6C84]">{activeCutJob.status === "queued" ? "Đang chờ" : `${activeCutJob.progress}%`}</p></div></div>
+                </section>
+              )}
+
+              {activePreviewJob && (
+                <section className="rounded-[22px] border border-[#CFE2C7] bg-gradient-to-r from-[#F0F8EC] to-white p-4 sm:p-5">
+                  <div className="flex items-center gap-4"><EmsenAvatar activity="working" className="h-14 w-14 shrink-0" /><div className="min-w-0 flex-1"><p className="text-sm font-bold text-[#3F7145]">Đang dựng bản xem thử…</p><p className="mt-1 text-xs leading-5 text-[#718472]">Emsen đang ghép các clip và làm mềm âm thanh tại mỗi điểm nối. Video gốc vẫn nguyên vẹn.</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#DCEBD6]"><span className="block h-full rounded-full bg-[#65A75D] transition-all" style={{ width: `${Math.max(4, activePreviewJob.progress)}%` }} /></div><p className="mt-1.5 text-right text-[10px] font-bold text-[#648066]">{activePreviewJob.status === "queued" ? "Đang chờ" : `${activePreviewJob.progress}%`}</p></div></div>
+                </section>
+              )}
+
+              {selected.cutDraft && <SmartCutEditor canRegenerate={selected.transcript?.status === "approved"} cutDraft={selected.cutDraft} targetDurationSeconds={selected.settings.targetDurationSeconds} regenerating={cutting || Boolean(activeCutJob)} previewAvailable={Boolean(selected.cutPreview)} previewCurrent={Boolean(selected.cutPreview && !selected.cutPreview.stale)} previewing={previewing || Boolean(activePreviewJob)} onCreatePreview={handleCreateCutPreview} onRegenerate={handleStartSmartCut} onSave={handleSaveCutDraft} />}
+              {selected.cutPreview && <CutPreviewPlayer preview={selected.cutPreview} projectId={selected.id} />}
             </div>
           ) : null}
         </div>

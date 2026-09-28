@@ -6,7 +6,10 @@ import {
   maxVideoBytes,
   parseCreateVideoProject,
   parseCreateVideoUpload,
+  parseStartVideoCutPreview,
+  parseStartVideoCutSuggestion,
   parseStartVideoTranscription,
+  parseUpdateVideoCutDraft,
   parseUpdateVideoTranscript,
 } from "../src/modules/video/video.schema.js";
 
@@ -102,4 +105,41 @@ test("validates starting and editing timestamped video transcripts", () => {
       { id: secondId, startSeconds: 5, endSeconds: 10, text: "Đoạn bị chồng" },
     ],
   }), (error) => error instanceof HttpError && error.code === "TRANSCRIPT_SEGMENTS_OVERLAP");
+});
+
+test("validates Smart Cut jobs and user decisions", () => {
+  assert.deepEqual(parseStartVideoCutSuggestion({ idempotencyKey: "smart-cut-video-01" }), {
+    idempotencyKey: "smart-cut-video-01",
+  });
+  assert.deepEqual(parseStartVideoCutPreview({
+    cutRevision: 3,
+    idempotencyKey: "smart-cut-preview-01",
+  }), {
+    cutRevision: 3,
+    idempotencyKey: "smart-cut-preview-01",
+  });
+  assert.deepEqual(parseUpdateVideoCutDraft({
+    decisions: [
+      { action: "keep", id: "84d33e08-c006-4325-89d4-4308394166b3" },
+      { action: "cut", id: "b886d902-f10c-4b16-90dd-54fdbd95be41" },
+    ],
+    revision: 1,
+    status: "approved",
+  }), {
+    decisions: [
+      { action: "keep", id: "84d33e08-c006-4325-89d4-4308394166b3" },
+      { action: "cut", id: "b886d902-f10c-4b16-90dd-54fdbd95be41" },
+    ],
+    revision: 1,
+    status: "approved",
+  });
+
+  assert.throws(() => parseUpdateVideoCutDraft({
+    decisions: [
+      { action: "keep", id: "84d33e08-c006-4325-89d4-4308394166b3" },
+      { action: "cut", id: "84d33e08-c006-4325-89d4-4308394166b3" },
+    ],
+    revision: 1,
+    status: "draft",
+  }), (error) => error instanceof HttpError && error.code === "INVALID_CUT_DECISION");
 });

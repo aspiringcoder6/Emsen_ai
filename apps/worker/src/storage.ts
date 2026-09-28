@@ -1,5 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
 import { createWriteStream } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { workerConfig } from "./config.js";
@@ -10,7 +11,7 @@ function encode(value: string) {
   );
 }
 
-function hash(value: string) {
+function hash(value: string | Buffer) {
   return createHash("sha256").update(value).digest("hex");
 }
 
@@ -29,10 +30,9 @@ function objectUrl(objectKey: string) {
   return new URL(`${endpoint.protocol}//${endpoint.host}${basePath}/${encode(workerConfig.storage.bucket)}/${encodedKey}`);
 }
 
-function authorization(url: URL, method: "DELETE" | "GET") {
+function authorization(url: URL, method: "DELETE" | "GET" | "PUT", payloadHash = hash("")) {
   const amzDate = timestamp(new Date());
   const dateStamp = amzDate.slice(0, 8);
-  const payloadHash = hash("");
   const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
   const canonicalHeaders = `host:${url.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
   const canonicalRequest = [method, url.pathname, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
@@ -67,5 +67,24 @@ export async function deleteMediaObject(objectKey: string) {
   const response = await fetch(url, { headers: authorization(url, "DELETE"), method: "DELETE" });
   if (!response.ok && response.status !== 404) {
     throw new Error(`Không xóa được video lỗi khỏi kho lưu trữ (${response.status}).`);
+  }
+}
+
+export async function uploadMediaObject(objectKey: string, sourcePath: string, mimeType: string) {
+  if (!workerConfig.storage.endpoint || !workerConfig.storage.accessKey || !workerConfig.storage.secretKey || !workerConfig.storage.bucket) {
+    throw new Error("Kho lưu trữ video chưa được cấu hình cho worker.");
+  }
+  const data = await readFile(sourcePath);
+  const url = objectUrl(objectKey);
+  const response = await fetch(url, {
+    body: data,
+    headers: {
+      ...authorization(url, "PUT", hash(data)),
+      "Content-Type": mimeType,
+    },
+    method: "PUT",
+  });
+  if (!response.ok) {
+    throw new Error(`Không lưu được bản preview vào kho video (${response.status}).`);
   }
 }

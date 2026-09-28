@@ -6,7 +6,7 @@ Mỗi feature chứa component, dữ liệu mẫu và logic riêng của một m
 - `chat`: trạng thái, storage và UI của emsen buddy.
 - `creator-dna`: onboarding 5 câu hỏi, vòng lặp tín hiệu tích lũy và các engine demo có thể thay thế.
 - `dashboard`: dữ liệu và các widget của trang tổng quan.
-- `video`: Video Studio, quay bằng teleprompter hoặc tải clip, theo dõi xử lý và duyệt transcript.
+- `video`: Video Studio, quay bằng teleprompter hoặc tải clip, duyệt transcript và duyệt bản nháp Smart Cut do AI gợi ý.
 
 Các trang trong `src/pages` chỉ chịu trách nhiệm ghép những feature này thành
 một màn hình hoàn chỉnh. Component dùng chung nằm trong `src/components`.
