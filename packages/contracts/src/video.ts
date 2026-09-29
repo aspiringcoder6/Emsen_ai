@@ -22,6 +22,7 @@ export type VideoAssetStatus =
 export type VideoJobType = "probe" | "transcribe" | "suggest-cuts" | "preview" | "render";
 export type VideoJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
 export type VideoCaptionPreset = "emsen-clean" | "none";
+export type VideoCaptionPosition = "center" | "lower-third";
 
 export type VideoProjectScriptDto = {
   aspectRatio: "9:16" | "1:1" | "16:9" | "4:5";
@@ -41,7 +42,12 @@ export type VideoProjectScriptOptionDto = VideoProjectScriptDto & {
 
 export type VideoProjectSettingsDto = {
   aspectRatio: "9:16";
+  captionAccentColor: string;
+  captionPosition: VideoCaptionPosition;
   captionPreset: VideoCaptionPreset;
+  captionTextColor: string;
+  renderSettingsRevision: number;
+  showBrandMark: boolean;
   targetDurationSeconds: number;
 };
 
@@ -107,6 +113,18 @@ export type VideoCutPreviewDto = {
   updatedAt: string;
 };
 
+export type VideoFinalOutputDto = {
+  assetId: string;
+  createdAt: string;
+  cutRevision: number;
+  durationSeconds: number;
+  fileName: string;
+  renderSettingsRevision: number;
+  sizeBytes: number;
+  stale: boolean;
+  updatedAt: string;
+};
+
 export type VideoAssetDto = {
   createdAt: string;
   fileName: string;
@@ -133,6 +151,7 @@ export type VideoProjectDto = {
   createdAt: string;
   cutDraft: VideoCutDraftDto | null;
   cutPreview: VideoCutPreviewDto | null;
+  finalOutput: VideoFinalOutputDto | null;
   id: string;
   jobs: VideoJobDto[];
   revision: number;
@@ -185,6 +204,22 @@ export type StartVideoCutPreviewRequestDto = {
   idempotencyKey: string;
 };
 
+export type StartVideoRenderRequestDto = {
+  confirmed: true;
+  cutRevision: number;
+  idempotencyKey: string;
+  renderSettingsRevision: number;
+};
+
+export type UpdateVideoRenderSettingsRequestDto = {
+  captionAccentColor: string;
+  captionPosition: VideoCaptionPosition;
+  captionPreset: VideoCaptionPreset;
+  captionTextColor: string;
+  revision: number;
+  showBrandMark: boolean;
+};
+
 export type UpdateVideoTranscriptRequestDto = {
   revision: number;
   segments: VideoTranscriptSegmentDto[];
@@ -217,4 +252,11 @@ export type VideoPlaybackTicketDto = {
   assetId: string;
   expiresAt: string;
   playbackUrl: string;
+};
+
+export type VideoDownloadTicketDto = {
+  assetId: string;
+  downloadUrl: string;
+  expiresAt: string;
+  fileName: string;
 };

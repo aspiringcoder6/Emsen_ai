@@ -39,7 +39,10 @@ import {
   normalizeScriptTimeline,
   parseScriptTimestampRanges,
   preserveOrApplySectionTimeline,
+  repairScriptTimeline,
+  scriptGenerationBlockingIssues,
   scriptGenerationIssues,
+  scriptTimelineIssues,
   scriptWordBudget,
 } from "./scriptTimeline.js";
 
@@ -264,6 +267,18 @@ function generatedContent(value: unknown): ScriptContentDto {
   return parseScriptContent({ ...row, storyboard: [] });
 }
 
+function preparedGeneratedContent(value: unknown, targetDurationSeconds: number) {
+  const content = generatedContent(value);
+  return scriptTimelineIssues(content, targetDurationSeconds).length
+    ? repairScriptTimeline(content, targetDurationSeconds)
+    : normalizeScriptTimeline(content);
+}
+
+function generatedContentScore(content: ScriptContentDto, targetDurationSeconds: number) {
+  return scriptGenerationBlockingIssues(content, targetDurationSeconds).length * 100
+    + scriptGenerationIssues(content, targetDurationSeconds).length;
+}
+
 const contentStructureLibrary = `Chọn đúng một cấu trúc chính theo dạng video, rồi triển khai đủ các nhịp:
 - Storytelling: Hook → Bối cảnh → Mâu thuẫn/vấn đề → Diễn biến → Turning point → Bài học/Payoff → CTA.
 - Chia sẻ kiến thức: Hook/Promise → Vấn đề → Luận điểm → Ví dụ → Takeaway → CTA.
@@ -438,33 +453,66 @@ Bám sát 6 lớp Creator DNA (giọng nói, chủ đề, cách kể, quan đi�
       thinkingLevel: "low",
       temperature: 0.4,
     });
-    let content = generatedContent(result.output);
+    let content = preparedGeneratedContent(result.output, targetDurationSeconds);
     let issues = scriptGenerationIssues(content, targetDurationSeconds);
     if (issues.length) {
-      result = await provider.generateStructured<unknown>({
-        schemaName: "content_script_v2",
-        responseSchema: generatedScriptResponseSchema,
-        systemPrompt,
-        userPrompt: JSON.stringify({
-          ...generationContext,
-          repairRequest: {
-            issues,
-            previousOutput: result.output,
-            requirement: "Viết lại toàn bộ, phát triển đủ lời thoại và không lặp câu để đạt đúng thời lượng.",
-          },
-        }),
-        thinkingLevel: "low",
-        temperature: 0.3,
-      });
-      content = generatedContent(result.output);
+      const firstAttempt = { content, result };
+      try {
+        const repairResult = await provider.generateStructured<unknown>({
+          schemaName: "content_script_v2",
+          responseSchema: generatedScriptResponseSchema,
+          systemPrompt: `${systemPrompt}
+Đây là lượt sửa chất lượng cuối. Ưu tiên trả về kịch bản dùng được: giữ đúng góc đã chọn, viết lời thoại đầy đủ, không giải thích quy trình và tuân thủ chính xác checklist sửa trong input.`,
+          userPrompt: JSON.stringify({
+            ...generationContext,
+            repairRequest: {
+              issues,
+              previousOutput: content,
+              exactWordTargets: wordBudget,
+              requirement: "Viết lại toàn bộ Hook, Nội dung và CTA. Phát triển đủ lời thoại, không lặp câu, không dùng câu giữ chỗ; đảm bảo các timestamp liên tục và kết thúc đúng thời lượng mục tiêu.",
+            },
+          }),
+          thinkingLevel: "medium",
+          temperature: 0.3,
+        });
+        const repairContent = preparedGeneratedContent(repairResult.output, targetDurationSeconds);
+        if (generatedContentScore(repairContent, targetDurationSeconds) <= generatedContentScore(firstAttempt.content, targetDurationSeconds)) {
+          result = repairResult;
+          content = repairContent;
+        } else {
+          result = firstAttempt.result;
+          content = firstAttempt.content;
+        }
+      } catch (repairError) {
+        if (scriptGenerationBlockingIssues(firstAttempt.content, targetDurationSeconds).length) {
+          throw repairError;
+        }
+        console.warn("[scripts] repair request failed; using the valid first draft", {
+          error: repairError instanceof Error ? repairError.name : "unknown",
+          targetDurationSeconds,
+        });
+        result = firstAttempt.result;
+        content = firstAttempt.content;
+      }
       issues = scriptGenerationIssues(content, targetDurationSeconds);
     }
-    if (issues.length) {
+    const blockingIssues = scriptGenerationBlockingIssues(content, targetDurationSeconds);
+    if (blockingIssues.length) {
+      console.warn("[scripts] generated script rejected after repair", {
+        blockingIssues,
+        targetDurationSeconds,
+      });
       throw new HttpError(
         502,
         "SCRIPT_GENERATION_INVALID",
         "Emsen chưa tạo được bản vừa đủ nội dung vừa khớp timeline. Hãy thử tạo lại; brief của bạn vẫn được giữ nguyên.",
       );
+    }
+    if (issues.length) {
+      console.warn("[scripts] generated script accepted with non-blocking quality hints", {
+        issues,
+        targetDurationSeconds,
+      });
     }
     return {
       content: normalizeScriptTimeline(content),

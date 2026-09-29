@@ -8,7 +8,7 @@ export type ScriptTimestampRange = {
 
 const timestampPattern = /\[?(\d{1,2}):([0-5]\d)\s*[-–—]\s*(\d{1,2}):([0-5]\d)\]?/g;
 const timestampWithSpacingPattern = /\[?\d{1,2}:[0-5]\d\s*[-–—]\s*\d{1,2}:[0-5]\d\]?\s*:?\s*/g;
-const timestampLinePattern = /^\s*\[?(\d{1,2}):([0-5]\d)\s*[-–—]\s*(\d{1,2}):([0-5]\d)\]?\s*:?\s*(.*)$/;
+const timestampLinePattern = /^\s*(?:(?:[-*•]|\d+[.)])\s+|#{1,6}\s+)?(?:\*{1,2})?\[?(\d{1,2}):([0-5]\d)\s*[-–—]\s*(\d{1,2}):([0-5]\d)\]?(?:\*{1,2})?\s*:?\s*(.*)$/;
 const deliveryLabelPattern = /\[(?:Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]\s*/giu;
 const deliveryLabelAtStartPattern = /^\s*\[(?:Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]/iu;
 
@@ -83,7 +83,7 @@ function parseTimedSegments(value: string): TimedSegment[] {
           Number(match[1]) * 60 + Number(match[2]),
           Number(match[3]) * 60 + Number(match[4]),
         ),
-        text: match[5]?.trim() ?? "",
+        text: (match[5]?.trim() ?? "").replace(/^(?:\*{1,2})|(?:\*{1,2})$/g, "").trim(),
       };
       segments.push(current);
     } else if (line.trim()) {
@@ -109,6 +109,112 @@ export function normalizeScriptTimeline(content: ScriptContentDto): ScriptConten
     hook: normalizeScriptTimestampFormatting(content.hook),
     body: normalizeScriptTimestampFormatting(content.body),
     cta: normalizeScriptTimestampFormatting(content.cta),
+  };
+}
+
+function cleanGeneratedSpeech(value: string) {
+  return stripScriptTimestamps(value)
+    .split(/\r?\n/)
+    .map((line) => line
+      .replace(/^\s*(?:[-*•]|\d+[.)]|#{1,6})\s+/, "")
+      .replace(/\*{1,2}/g, "")
+      .replace(/^\s*(?:Hook|Nội dung|CTA)\s*:\s*/iu, "")
+      .trim())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function preferredDeliveryLabel(value: string) {
+  const label = value.match(/\[(Nói trực tiếp|Thoại trực tiếp|Voice[- ]?over|Lồng tiếng)\]/iu)?.[1] ?? "";
+  return /voice|lồng/iu.test(label) ? "[Voice-over]" : "[Nói trực tiếp]";
+}
+
+function spokenDuration(wordCount: number, minimum: number, maximum: number) {
+  return clamp(Math.round(wordCount / 2.7), minimum, maximum);
+}
+
+function serializeTimedSpeech(
+  chunks: string[],
+  startSeconds: number,
+  endSeconds: number,
+  deliveryLabel: string,
+) {
+  const safeChunks = chunks.length ? chunks : [""];
+  const availableSeconds = Math.max(1, endSeconds - startSeconds);
+  const limitedChunks = safeChunks.slice(0, availableSeconds);
+  const weights = limitedChunks.map((chunk) => Math.max(1, countSpokenWords(chunk)));
+  const totalWeight = weights.reduce((total, weight) => total + weight, 0);
+  let elapsedWeight = 0;
+  let cursor = startSeconds;
+  return limitedChunks.map((chunk, index) => {
+    elapsedWeight += weights[index]!;
+    const remaining = limitedChunks.length - index - 1;
+    const proposedEnd = index === limitedChunks.length - 1
+      ? endSeconds
+      : startSeconds + Math.round(availableSeconds * elapsedWeight / totalWeight);
+    const segmentEnd = index === limitedChunks.length - 1
+      ? endSeconds
+      : clamp(proposedEnd, cursor + 1, endSeconds - remaining);
+    const output = `[${formatScriptTimestamp(cursor)}–${formatScriptTimestamp(segmentEnd)}] ${deliveryLabel} ${chunk}`.trim();
+    cursor = segmentEnd;
+    return output;
+  }).join("\n");
+}
+
+/**
+ * Repairs formatting/timing deterministically without inventing new claims or dialogue.
+ * AI remains responsible for the words; this function only redistributes those words
+ * across a continuous, flexible timeline.
+ */
+export function repairScriptTimeline(content: ScriptContentDto, targetDurationSeconds: number): ScriptContentDto {
+  const duration = clamp(Math.round(targetDurationSeconds), 5, 3_600);
+  const hookText = cleanGeneratedSpeech(content.hook);
+  const bodyText = cleanGeneratedSpeech(content.body);
+  const ctaText = cleanGeneratedSpeech(content.cta);
+  const hookWords = countSpokenWords(hookText);
+  const ctaWords = countSpokenWords(ctaText);
+  const hookDuration = duration >= 12
+    ? spokenDuration(hookWords, 3, 5)
+    : Math.max(1, Math.min(duration - 2, Math.round(duration * 0.25)));
+  const ctaDuration = duration >= 12
+    ? spokenDuration(ctaWords, 3, 5)
+    : Math.max(1, Math.min(duration - hookDuration - 1, Math.round(duration * 0.25)));
+  const bodyStart = hookDuration;
+  const bodyEnd = Math.max(bodyStart + 1, duration - ctaDuration);
+  const bodySeconds = bodyEnd - bodyStart;
+  const guide = buildFlexibleTimelineGuide(duration);
+  const existingBeatCount = parseScriptTimestampRanges(content.body).length;
+  const sentenceCount = bodyText.split(/(?<=[.!?…])\s+/).filter(Boolean).length;
+  const naturalBeatCount = Math.max(sentenceCount, Math.ceil(Math.max(1, countSpokenWords(bodyText)) / 28));
+  const requestedBeatCount = existingBeatCount || naturalBeatCount;
+  const beatCount = clamp(
+    requestedBeatCount,
+    Math.min(guide.bodyBeatCount.minimum, bodySeconds),
+    Math.min(guide.bodyBeatCount.maximum, bodySeconds),
+  );
+  const bodyChunks = splitText(bodyText, beatCount);
+  return {
+    ...content,
+    hook: serializeTimedSpeech(
+      [hookText],
+      0,
+      bodyStart,
+      preferredDeliveryLabel(content.hook),
+    ),
+    body: serializeTimedSpeech(
+      bodyChunks,
+      bodyStart,
+      bodyEnd,
+      preferredDeliveryLabel(content.body),
+    ),
+    cta: serializeTimedSpeech(
+      [ctaText],
+      bodyEnd,
+      duration,
+      preferredDeliveryLabel(content.cta),
+    ),
   };
 }
 
@@ -235,4 +341,40 @@ export function scriptGenerationIssues(content: ScriptContentDto, targetDuration
   if (ctaWords < budget.cta.min) issues.push(`CTA cần ít nhất ${budget.cta.min} từ.`);
   if (ctaWords > budget.cta.max) issues.push(`CTA nên tối đa ${budget.cta.max} từ để giữ trong 3–5 giây.`);
   return issues;
+}
+
+/**
+ * Hard failures only. Normal word-budget misses are repair hints, not a reason to
+ * discard an otherwise useful script after the repair attempt.
+ */
+export function scriptGenerationBlockingIssues(content: ScriptContentDto, targetDurationSeconds: number) {
+  const budget = scriptWordBudget(targetDurationSeconds);
+  const hookWords = countSpokenWords(content.hook);
+  const bodyWords = countSpokenWords(content.body);
+  const ctaWords = countSpokenWords(content.cta);
+  const totalWords = hookWords + bodyWords + ctaWords;
+  const issues = scriptTimelineIssues(content, targetDurationSeconds);
+  const minimumUsableTotal = Math.max(6, Math.ceil(budget.total.min * 0.78));
+  const minimumUsableBody = Math.max(4, Math.ceil(budget.body.min * 0.7));
+  const maximumUsableTotal = Math.ceil(budget.total.max * 1.35);
+  if (totalWords < minimumUsableTotal) {
+    issues.push(`Kịch bản chỉ có ${totalWords} từ, dưới mức tối thiểu có thể sử dụng là ${minimumUsableTotal} từ.`);
+  }
+  if (totalWords > maximumUsableTotal) {
+    issues.push(`Kịch bản có ${totalWords} từ, vượt mức tối đa có thể sử dụng là ${maximumUsableTotal} từ.`);
+  }
+  if (bodyWords < minimumUsableBody) {
+    issues.push(`Phần nội dung chỉ có ${bodyWords} từ, dưới mức tối thiểu có thể sử dụng là ${minimumUsableBody} từ.`);
+  }
+  if (hookWords < Math.max(2, Math.floor(budget.hook.min * 0.5))) {
+    issues.push("Hook chưa có đủ lời thoại để sử dụng.");
+  }
+  if (ctaWords < Math.max(2, Math.floor(budget.cta.min * 0.5))) {
+    issues.push("CTA chưa có đủ lời thoại để sử dụng.");
+  }
+  const spokenText = [content.hook, content.body, content.cta].map(stripScriptTimestamps).join(" ");
+  if (/\b(?:tâm sự thật lòng|nói thêm ở đây|viết thêm ở đây|điền nội dung|placeholder)\b/iu.test(spokenText)) {
+    issues.push("Kịch bản còn chứa câu giữ chỗ thay vì lời thoại hoàn chỉnh.");
+  }
+  return [...new Set(issues)];
 }

@@ -51,9 +51,16 @@
 
 ## Slice 4 — Caption, brand và render
 
-- Preset Emsen Clean, logo/font/màu cơ bản và chuẩn hóa âm lượng.
-- Render MP4 H.264/AAC bằng FFmpeg, progress/retry và output idempotent.
-- URL tải thành phẩm có thời hạn; `video.render` luôn cần người dùng xác nhận.
+Đã triển khai:
+
+- Preset Emsen Clean burn-in phụ đề theo transcript, tự dồn timestamp về timeline sau Smart Cut và chia câu thành các nhịp ngắn dễ đọc.
+- Giao diện tối giản có preview phong cách; phần nâng cao cho phép đổi vị trí, màu chữ, màu nhấn và bật/tắt logo Emsen.
+- Worker render MP4 H.264/AAC 720×1280 bằng FFmpeg, giữ audio fade ở điểm nối và chuẩn hóa âm lượng về mục tiêu -16 LUFS.
+- Job render có progress, retry bằng thao tác xuất lại, idempotency key và kiểm tra revision của transcript, Smart Cut lẫn cấu hình trước khi ghi nhận output.
+- Bản xuất cũ được giữ an toàn; giao diện đánh dấu bản cũ khi Smart Cut hoặc caption thay đổi và ưu tiên bản mới nhất.
+- Video hoàn chỉnh nằm trong bucket private, chỉ phát hoặc tải qua URL có chữ ký và tự hết hạn.
+- `video.render` luôn yêu cầu người dùng xác nhận rõ ràng trong modal; video nguồn không bị ghi đè.
+- Slice này không cần model AI hoặc API key mới; chỉ dùng FFmpeg đã đóng gói cùng worker.
 
 ## Biến môi trường production
 

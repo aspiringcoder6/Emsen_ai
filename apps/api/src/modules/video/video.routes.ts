@@ -6,8 +6,10 @@ import {
   parseCreateVideoUpload,
   parseStartVideoCutPreview,
   parseStartVideoCutSuggestion,
+  parseStartVideoRender,
   parseStartVideoTranscription,
   parseUpdateVideoCutDraft,
+  parseUpdateVideoRenderSettings,
   parseUpdateVideoTranscript,
   parseUuid,
 } from "./video.schema.js";
@@ -15,13 +17,16 @@ import {
   completeVideoUpload,
   createVideoProject,
   createVideoUpload,
+  getVideoDownload,
   getVideoProject,
   getVideoPlayback,
   getVideoWorkspace,
   startVideoCutPreview,
   startVideoCutSuggestion,
+  startVideoRender,
   startVideoTranscription,
   updateVideoCutDraft,
+  updateVideoRenderSettings,
   updateVideoTranscript,
 } from "./video.service.js";
 
@@ -85,6 +90,16 @@ videoRouter.get("/projects/:projectId/assets/:assetId/playback", async (request,
   );
 });
 
+videoRouter.get("/projects/:projectId/assets/:assetId/download", async (request, response) => {
+  response.json(
+    await getVideoDownload(
+      request.auth!.userId,
+      projectId(request.params.projectId),
+      assetId(request.params.assetId),
+    ),
+  );
+});
+
 videoRouter.post("/projects/:projectId/transcription", async (request, response) => {
   const input = parseStartVideoTranscription(request.body);
   response.status(202).json(
@@ -133,6 +148,26 @@ videoRouter.post("/projects/:projectId/cut-preview", async (request, response) =
       request.auth!.userId,
       projectId(request.params.projectId),
       parseStartVideoCutPreview(request.body),
+    ),
+  );
+});
+
+videoRouter.put("/projects/:projectId/render-settings", async (request, response) => {
+  response.json(
+    await updateVideoRenderSettings(
+      request.auth!.userId,
+      projectId(request.params.projectId),
+      parseUpdateVideoRenderSettings(request.body),
+    ),
+  );
+});
+
+videoRouter.post("/projects/:projectId/render", async (request, response) => {
+  response.status(202).json(
+    await startVideoRender(
+      request.auth!.userId,
+      projectId(request.params.projectId),
+      parseStartVideoRender(request.body),
     ),
   );
 });

@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "test:smart-cut": "node --import tsx --test test/smartCut.test.ts test/videoPreview.test.ts",
+    "test:smart-cut": "node --import tsx --test test/smartCut.test.ts test/videoPreview.test.ts test/videoRender.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -8,10 +8,13 @@ test("video projects keep the script context and persist reviewed transcripts", 
   const { createScript, updateScript } = await import("../src/modules/scripts/script.service.js");
   const {
     createVideoProject,
+    getVideoDownload,
     getVideoPlayback,
     getVideoProject,
     getVideoWorkspace,
+    startVideoRender,
     updateVideoCutDraft,
+    updateVideoRenderSettings,
     updateVideoTranscript,
   } = await import("../src/modules/video/video.service.js");
   await migrateDatabase();
@@ -156,12 +159,69 @@ test("video projects keep the script context and persist reviewed transcripts", 
     assert.equal(approvedCut.cutPreview?.stale, false);
     assert.equal(approvedCut.status, "ready-to-render");
 
+    const renderSettings = await updateVideoRenderSettings(userId, created.id, {
+      captionAccentColor: "#8FCB7D",
+      captionPosition: "lower-third",
+      captionPreset: "emsen-clean",
+      captionTextColor: "#FFFFFF",
+      revision: approvedCut.revision,
+      showBrandMark: true,
+    });
+    assert.equal(renderSettings.settings.renderSettingsRevision, 2);
+    const rendering = await startVideoRender(userId, created.id, {
+      confirmed: true,
+      cutRevision: renderSettings.cutDraft!.revision,
+      idempotencyKey: `render-${randomUUID()}`,
+      renderSettingsRevision: renderSettings.settings.renderSettingsRevision,
+    });
+    assert.equal(rendering.status, "rendering");
+    assert.equal(rendering.jobs[0]?.type, "render");
+    assert.equal(rendering.jobs[0]?.status, "queued");
+    const finalAssetId = randomUUID();
+    await database.query(
+      `INSERT INTO media_assets (
+         id, project_id, user_id, kind, status, file_name, mime_type, size_bytes,
+         object_key, idempotency_key, metadata
+       ) VALUES ($1, $2, $3, 'output', 'ready', 'emsen-video.mp4', 'video/mp4', 4096, $4, $5, $6::jsonb)`,
+      [
+        finalAssetId,
+        created.id,
+        userId,
+        `users/${userId}/projects/${created.id}/final/${finalAssetId}.mp4`,
+        `final-${finalAssetId}`,
+        JSON.stringify({
+          cutRevision: 2,
+          durationSeconds: 60,
+          purpose: "final-render",
+          renderSettingsRevision: 2,
+          transcriptRevision: 2,
+        }),
+      ],
+    );
+    await database.query(
+      `UPDATE media_jobs
+       SET status = 'succeeded', progress = 100, finished_at = NOW(), updated_at = NOW()
+       WHERE project_id = $1 AND user_id = $2 AND type = 'render'`,
+      [created.id, userId],
+    );
+    await database.query(
+      "UPDATE media_projects SET status = 'completed' WHERE id = $1 AND user_id = $2",
+      [created.id, userId],
+    );
+    const completed = await getVideoProject(userId, created.id);
+    assert.equal(completed.finalOutput?.assetId, finalAssetId);
+    assert.equal(completed.finalOutput?.stale, false);
+    const download = await getVideoDownload(userId, created.id, finalAssetId);
+    assert.equal(download.assetId, finalAssetId);
+    assert.match(download.downloadUrl, /response-content-disposition=/);
+
     const changedTranscript = await updateVideoTranscript(userId, created.id, {
       revision: reviewed.transcript!.revision,
       segments: reviewed.transcript!.segments,
       status: "approved",
     });
     assert.equal(changedTranscript.cutDraft?.stale, true);
+    assert.equal(changedTranscript.finalOutput?.stale, true);
     assert.equal(changedTranscript.status, "transcript-ready");
 
     const current = await getVideoProject(userId, created.id);

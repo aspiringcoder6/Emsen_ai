@@ -5,11 +5,15 @@ import type {
   CreateVideoUploadRequestDto,
   ScriptDocumentDto,
   StartVideoCutPreviewRequestDto,
+  StartVideoRenderRequestDto,
+  UpdateVideoRenderSettingsRequestDto,
   VideoAssetDto,
   VideoCaptionPreset,
   VideoCutDecisionDto,
   VideoCutDraftDto,
   VideoCutPreviewDto,
+  VideoDownloadTicketDto,
+  VideoFinalOutputDto,
   VideoJobDto,
   VideoProjectDto,
   VideoProjectScriptDto,
@@ -33,6 +37,7 @@ import {
 } from "./video.schema.js";
 import {
   createVideoUploadUrl,
+  createVideoDownloadUrl,
   createVideoPlaybackUrl,
   ensureMediaBucket,
   inspectVideoObject,
@@ -50,7 +55,7 @@ type ProjectRow = {
   revision: number;
   script_payload: ScriptDocumentDto | null;
   script_snapshot: ScriptSnapshot;
-  settings: VideoProjectSettingsDto;
+  settings: Partial<VideoProjectSettingsDto>;
   status: VideoProjectStatus;
   title: string;
   updated_at: Date | string;
@@ -107,6 +112,25 @@ type CutDraftRow = {
 
 function iso(value: Date | string) {
   return new Date(value).toISOString();
+}
+
+function normalizeProjectSettings(settings: Partial<VideoProjectSettingsDto>): VideoProjectSettingsDto {
+  return {
+    aspectRatio: "9:16",
+    captionAccentColor: /^#[0-9a-f]{6}$/i.test(settings.captionAccentColor ?? "")
+      ? settings.captionAccentColor!.toUpperCase()
+      : "#A8D694",
+    captionPosition: settings.captionPosition === "center" ? "center" : "lower-third",
+    captionPreset: settings.captionPreset === "none" ? "none" : "emsen-clean",
+    captionTextColor: /^#[0-9a-f]{6}$/i.test(settings.captionTextColor ?? "")
+      ? settings.captionTextColor!.toUpperCase()
+      : "#FFFFFF",
+    renderSettingsRevision: Number.isInteger(settings.renderSettingsRevision) && Number(settings.renderSettingsRevision) > 0
+      ? Number(settings.renderSettingsRevision)
+      : 1,
+    showBrandMark: settings.showBrandMark !== false,
+    targetDurationSeconds: Number(settings.targetDurationSeconds) || 60,
+  };
 }
 
 function scriptSummary(script: ScriptDocumentDto): VideoProjectScriptDto {
@@ -231,12 +255,16 @@ async function loadProjects(userId: string, projectId?: string) {
   ]);
   const assetsByProject = new Map<string, VideoAssetDto[]>();
   const cutPreviewByProject = new Map<string, AssetRow>();
+  const finalOutputByProject = new Map<string, AssetRow>();
   for (const row of assetResult.rows) {
     const items = assetsByProject.get(row.project_id) ?? [];
     items.push(assetDto(row));
     assetsByProject.set(row.project_id, items);
     if (row.kind === "output" && row.status === "ready" && row.metadata?.purpose === "cut-preview") {
       cutPreviewByProject.set(row.project_id, row);
+    }
+    if (row.kind === "output" && row.status === "ready" && row.metadata?.purpose === "final-render") {
+      finalOutputByProject.set(row.project_id, row);
     }
   }
   const jobsByProject = new Map<string, VideoJobDto[]>();
@@ -253,6 +281,7 @@ async function loadProjects(userId: string, projectId?: string) {
     const teleprompterContent = row.script_payload?.content ?? snapshot?.content;
     const transcript = transcriptByProject.get(row.id) ?? null;
     const cutDraft = cutDraftByProject.get(row.id);
+    const settings = normalizeProjectSettings(row.settings);
     const previewAsset = cutPreviewByProject.get(row.id);
     const previewCutRevision = Number(previewAsset?.metadata?.cutRevision);
     const cutPreview: VideoCutPreviewDto | null = previewAsset && Number.isInteger(previewCutRevision) ? {
@@ -263,11 +292,29 @@ async function loadProjects(userId: string, projectId?: string) {
       stale: !cutDraft || previewCutRevision !== cutDraft.revision,
       updatedAt: iso(previewAsset.updated_at),
     } : null;
+    const finalAsset = finalOutputByProject.get(row.id);
+    const finalCutRevision = Number(finalAsset?.metadata?.cutRevision);
+    const finalSettingsRevision = Number(finalAsset?.metadata?.renderSettingsRevision);
+    const finalTranscriptRevision = Number(finalAsset?.metadata?.transcriptRevision);
+    const finalOutput: VideoFinalOutputDto | null = finalAsset && Number.isInteger(finalCutRevision) && Number.isInteger(finalSettingsRevision) ? {
+      assetId: finalAsset.id,
+      createdAt: iso(finalAsset.created_at),
+      cutRevision: finalCutRevision,
+      durationSeconds: Number(finalAsset.metadata?.durationSeconds) || 0,
+      fileName: finalAsset.file_name,
+      renderSettingsRevision: finalSettingsRevision,
+      sizeBytes: Number(finalAsset.size_bytes),
+      stale: !cutDraft || cutDraft.status !== "approved" || finalCutRevision !== cutDraft.revision ||
+        finalSettingsRevision !== settings.renderSettingsRevision ||
+        (Number.isInteger(finalTranscriptRevision) && finalTranscriptRevision !== transcript?.revision),
+      updatedAt: iso(finalAsset.updated_at),
+    } : null;
     return {
       assets: assetsByProject.get(row.id) ?? [],
       createdAt: iso(row.created_at),
       cutDraft: cutDraft ? cutDraftDto(cutDraft, transcript?.revision ?? null) : null,
       cutPreview,
+      finalOutput,
       id: row.id,
       jobs: jobsByProject.get(row.id) ?? [],
       revision: row.revision,
@@ -280,7 +327,7 @@ async function loadProjects(userId: string, projectId?: string) {
         title: snapshot.title,
         updatedAt: snapshot.updatedAt,
       } : null),
-      settings: row.settings,
+      settings,
       status: row.status,
       teleprompter: {
         body: teleprompterContent?.body ?? "",
@@ -370,7 +417,12 @@ export async function createVideoProject(
   const title = input.title || `Dựng video · ${script.title}`.slice(0, 250);
   const settings: VideoProjectSettingsDto = {
     aspectRatio: "9:16",
+    captionAccentColor: "#A8D694",
+    captionPosition: "lower-third",
     captionPreset: input.captionPreset as VideoCaptionPreset,
+    captionTextColor: "#FFFFFF",
+    renderSettingsRevision: 1,
+    showBrandMark: true,
     targetDurationSeconds: script.settings.targetDurationSeconds,
   };
   const snapshot: ScriptSnapshot = {
@@ -545,13 +597,37 @@ export async function getVideoPlayback(
        AND assets.status IN ('uploaded', 'ready')
        AND (
          assets.kind = 'source'
-         OR (assets.kind = 'output' AND assets.metadata->>'purpose' = 'cut-preview')
+         OR (assets.kind = 'output' AND assets.metadata->>'purpose' IN ('cut-preview', 'final-render'))
        )`,
     [assetId, projectId, userId],
   );
   const asset = result.rows[0];
   if (!asset) throw new HttpError(404, "VIDEO_ASSET_NOT_FOUND", "Không tìm thấy video thô để phát lại.");
   return { assetId: asset.id, ...createVideoPlaybackUrl(asset.object_key) };
+}
+
+export async function getVideoDownload(
+  userId: string,
+  projectId: string,
+  assetId: string,
+): Promise<VideoDownloadTicketDto> {
+  const result = await database.query<{ file_name: string; id: string; object_key: string }>(
+    `SELECT assets.id, assets.file_name, assets.object_key
+     FROM media_assets AS assets
+     JOIN media_projects AS projects ON projects.id = assets.project_id
+     WHERE assets.id = $1 AND assets.project_id = $2
+       AND assets.user_id = $3 AND projects.user_id = $3
+       AND assets.kind = 'output' AND assets.status = 'ready'
+       AND assets.metadata->>'purpose' = 'final-render'`,
+    [assetId, projectId, userId],
+  );
+  const asset = result.rows[0];
+  if (!asset) throw new HttpError(404, "VIDEO_OUTPUT_NOT_FOUND", "Không tìm thấy bản video hoàn chỉnh để tải xuống.");
+  return {
+    assetId: asset.id,
+    fileName: asset.file_name,
+    ...createVideoDownloadUrl(asset.object_key, asset.file_name),
+  };
 }
 
 export async function startVideoTranscription(
@@ -634,8 +710,8 @@ export async function updateVideoTranscript(
   projectId: string,
   input: UpdateVideoTranscriptRequestDto,
 ) {
-  const current = await database.query<{ duration_seconds: number; revision: number }>(
-    `SELECT transcripts.duration_seconds, transcripts.revision
+  const current = await database.query<{ duration_seconds: number; project_status: VideoProjectStatus; revision: number }>(
+    `SELECT transcripts.duration_seconds, transcripts.revision, projects.status AS project_status
      FROM video_transcripts AS transcripts
      JOIN media_projects AS projects ON projects.id = transcripts.project_id
      WHERE transcripts.project_id = $1 AND transcripts.user_id = $2 AND projects.user_id = $2`,
@@ -643,6 +719,9 @@ export async function updateVideoTranscript(
   );
   const transcript = current.rows[0];
   if (!transcript) throw new HttpError(404, "VIDEO_TRANSCRIPT_NOT_FOUND", "Dự án chưa có lời thoại để chỉnh.");
+  if (transcript.project_status === "rendering") {
+    throw new HttpError(409, "VIDEO_TRANSCRIPT_LOCKED", "Emsen đang xuất video nên chưa thể sửa lời thoại.");
+  }
   if (input.revision !== transcript.revision) {
     throw new HttpError(409, "VIDEO_TRANSCRIPT_CONFLICT", "Lời thoại đã thay đổi ở nơi khác. Hãy tải lại trước khi lưu.");
   }
@@ -775,13 +854,13 @@ export async function updateVideoCutDraft(
     if (!current) throw new HttpError(404, "VIDEO_CUT_NOT_FOUND", "Dự án chưa có gợi ý Smart Cut để chỉnh.");
     const activeJob = await client.query<{ id: string }>(
       `SELECT id FROM media_jobs
-       WHERE project_id = $1 AND user_id = $2 AND type IN ('suggest-cuts', 'preview')
+       WHERE project_id = $1 AND user_id = $2 AND type IN ('suggest-cuts', 'preview', 'render')
          AND status IN ('queued', 'running')
        LIMIT 1`,
       [projectId, userId],
     );
     if (activeJob.rows[0]) {
-      throw new HttpError(409, "VIDEO_CUT_PROCESSING", "Emsen đang xử lý Smart Cut hoặc preview. Hãy đợi tác vụ hiện tại hoàn tất.");
+      throw new HttpError(409, "VIDEO_CUT_PROCESSING", "Emsen đang xử lý Smart Cut, preview hoặc bản xuất. Hãy đợi tác vụ hiện tại hoàn tất.");
     }
     if (current.revision !== input.revision) {
       throw new HttpError(409, "VIDEO_CUT_CONFLICT", "Bản Smart Cut đã thay đổi ở nơi khác. Hãy tải lại trước khi lưu.");
@@ -927,6 +1006,186 @@ export async function startVideoCutPreview(
     );
     await client.query(
       `UPDATE media_projects SET revision = revision + 1, updated_at = NOW()
+       WHERE id = $1 AND user_id = $2`,
+      [projectId, userId],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  return getVideoProject(userId, projectId);
+}
+
+export async function updateVideoRenderSettings(
+  userId: string,
+  projectId: string,
+  input: UpdateVideoRenderSettingsRequestDto,
+) {
+  const client = await database.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query<{
+      revision: number;
+      settings: Partial<VideoProjectSettingsDto>;
+      status: VideoProjectStatus;
+    }>(
+      `SELECT revision, settings, status
+       FROM media_projects
+       WHERE id = $1 AND user_id = $2
+       FOR UPDATE`,
+      [projectId, userId],
+    );
+    const project = result.rows[0];
+    if (!project) throw new HttpError(404, "VIDEO_PROJECT_NOT_FOUND", "Không tìm thấy dự án video này.");
+    if (project.revision !== input.revision) {
+      throw new HttpError(409, "VIDEO_PROJECT_CONFLICT", "Dự án đã thay đổi ở nơi khác. Hãy tải lại trước khi lưu cài đặt.");
+    }
+    if (project.status === "rendering") {
+      throw new HttpError(409, "VIDEO_RENDER_SETTINGS_LOCKED", "Emsen đang xuất video nên chưa thể đổi cài đặt.");
+    }
+    const current = normalizeProjectSettings(project.settings);
+    const changed = current.captionPreset !== input.captionPreset ||
+      current.captionPosition !== input.captionPosition ||
+      current.captionTextColor !== input.captionTextColor ||
+      current.captionAccentColor !== input.captionAccentColor ||
+      current.showBrandMark !== input.showBrandMark;
+    if (changed) {
+      const settings: VideoProjectSettingsDto = {
+        ...current,
+        captionAccentColor: input.captionAccentColor,
+        captionPosition: input.captionPosition,
+        captionPreset: input.captionPreset,
+        captionTextColor: input.captionTextColor,
+        renderSettingsRevision: current.renderSettingsRevision + 1,
+        showBrandMark: input.showBrandMark,
+      };
+      await client.query(
+        `UPDATE media_projects
+         SET settings = $1::jsonb,
+             status = CASE WHEN status = 'completed' THEN 'ready-to-render' ELSE status END,
+             revision = revision + 1, updated_at = NOW()
+         WHERE id = $2 AND user_id = $3`,
+        [JSON.stringify(settings), projectId, userId],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  return getVideoProject(userId, projectId);
+}
+
+export async function startVideoRender(
+  userId: string,
+  projectId: string,
+  input: StartVideoRenderRequestDto,
+) {
+  await ensureMediaBucket();
+  const client = await database.connect();
+  try {
+    await client.query("BEGIN");
+    const projectResult = await client.query<{
+      settings: Partial<VideoProjectSettingsDto>;
+      status: VideoProjectStatus;
+    }>(
+      `SELECT settings, status
+       FROM media_projects
+       WHERE id = $1 AND user_id = $2
+       FOR UPDATE`,
+      [projectId, userId],
+    );
+    const project = projectResult.rows[0];
+    if (!project) throw new HttpError(404, "VIDEO_PROJECT_NOT_FOUND", "Không tìm thấy dự án video này.");
+
+    const existingJob = await client.query<{ id: string }>(
+      `SELECT id FROM media_jobs
+       WHERE project_id = $1 AND type = 'render' AND idempotency_key = $2`,
+      [projectId, input.idempotencyKey],
+    );
+    if (existingJob.rows[0]) {
+      await client.query("COMMIT");
+      return getVideoProject(userId, projectId);
+    }
+    if (!['ready-to-render', 'completed'].includes(project.status)) {
+      throw new HttpError(409, "VIDEO_NOT_READY_TO_RENDER", "Hãy duyệt Smart Cut trước khi xuất video hoàn chỉnh.");
+    }
+    const settings = normalizeProjectSettings(project.settings);
+    if (settings.renderSettingsRevision !== input.renderSettingsRevision) {
+      throw new HttpError(409, "VIDEO_RENDER_SETTINGS_CONFLICT", "Cài đặt caption vừa thay đổi. Hãy kiểm tra lại trước khi xuất video.");
+    }
+    const cutResult = await client.query<{
+      current_transcript_revision: number;
+      decisions: VideoCutDecisionDto[];
+      revision: number;
+      status: VideoCutDraftDto["status"];
+      transcript_revision: number;
+    }>(
+      `SELECT cuts.revision, cuts.status, cuts.transcript_revision, cuts.decisions,
+              transcripts.revision AS current_transcript_revision
+       FROM video_cut_drafts AS cuts
+       JOIN video_transcripts AS transcripts
+         ON transcripts.project_id = cuts.project_id AND transcripts.user_id = cuts.user_id
+       WHERE cuts.project_id = $1 AND cuts.user_id = $2
+       FOR UPDATE OF cuts`,
+      [projectId, userId],
+    );
+    const cut = cutResult.rows[0];
+    if (!cut || cut.status !== "approved") {
+      throw new HttpError(409, "VIDEO_CUT_APPROVAL_REQUIRED", "Hãy duyệt Smart Cut trước khi xuất video hoàn chỉnh.");
+    }
+    if (cut.revision !== input.cutRevision || cut.transcript_revision !== cut.current_transcript_revision) {
+      throw new HttpError(409, "VIDEO_RENDER_INPUT_STALE", "Lời thoại hoặc Smart Cut đã thay đổi. Hãy duyệt lại bản mới nhất.");
+    }
+    if (cut.decisions.some((decision) => decision.action === "cut")) {
+      const preview = await client.query<{ id: string }>(
+        `SELECT id FROM media_assets
+         WHERE project_id = $1 AND user_id = $2 AND kind = 'output' AND status = 'ready'
+           AND metadata->>'purpose' = 'cut-preview'
+           AND metadata->>'cutRevision' = $3
+         LIMIT 1`,
+        [projectId, userId, String(cut.revision)],
+      );
+      if (!preview.rows[0]) {
+        throw new HttpError(409, "VIDEO_CUT_PREVIEW_REQUIRED", "Hãy nghe bản xem thử Smart Cut mới nhất trước khi xuất video.");
+      }
+    }
+    const activeJob = await client.query<{ id: string }>(
+      `SELECT id FROM media_jobs
+       WHERE project_id = $1 AND status IN ('queued', 'running')
+       LIMIT 1`,
+      [projectId],
+    );
+    if (activeJob.rows[0]) {
+      throw new HttpError(409, "VIDEO_JOB_ALREADY_RUNNING", "Emsen đang xử lý một tác vụ khác cho dự án này.");
+    }
+    const sourceResult = await client.query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM media_assets
+       WHERE project_id = $1 AND user_id = $2 AND kind = 'source' AND status = 'ready'`,
+      [projectId, userId],
+    );
+    if (!Number(sourceResult.rows[0]?.count)) {
+      throw new HttpError(409, "VIDEO_SOURCE_NOT_READY", "Video nguồn chưa sẵn sàng để xuất bản.");
+    }
+    await client.query(
+      `INSERT INTO media_jobs (
+         id, project_id, user_id, type, status, progress, idempotency_key, input
+       ) VALUES ($1, $2, $3, 'render', 'queued', 0, $4, $5::jsonb)`,
+      [randomUUID(), projectId, userId, input.idempotencyKey, JSON.stringify({
+        cutRevision: cut.revision,
+        renderSettingsRevision: settings.renderSettingsRevision,
+        settings,
+        transcriptRevision: cut.transcript_revision,
+      })],
+    );
+    await client.query(
+      `UPDATE media_projects
+       SET status = 'rendering', revision = revision + 1, updated_at = NOW()
        WHERE id = $1 AND user_id = $2`,
       [projectId, userId],
     );

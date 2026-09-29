@@ -20,6 +20,17 @@ export type KeptInterval = {
   startSeconds: number;
 };
 
+export type VideoEditProfile = {
+  audioBitrate: string;
+  cutProgress: { end: number; start: number };
+  height: number;
+  normalizeCrf: number;
+  normalizeProgress: { end: number; start: number };
+  outputCrf: number;
+  preset: string;
+  width: number;
+};
+
 const round = (value: number) => Math.round(value * 1_000) / 1_000;
 
 export function buildKeptIntervals(
@@ -58,7 +69,7 @@ export function buildKeptIntervals(
   return kept;
 }
 
-function runFfmpeg(
+export function runFfmpeg(
   args: string[],
   expectedDurationSeconds: number,
   onProgress: (progress: number) => Promise<void>,
@@ -75,7 +86,7 @@ function runFfmpeg(
     let progressQueue = Promise.resolve();
     const timeout = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new Error("FFmpeg tạo preview quá thời gian cho phép."));
+      reject(new Error("FFmpeg xử lý video quá thời gian cho phép."));
     }, Math.max(10 * 60_000, expectedDurationSeconds * 4_000));
 
     child.stdout.setEncoding("utf8");
@@ -117,13 +128,14 @@ async function normalizeSources(
   assets: PreviewSourceAsset[],
   destination: string,
   onProgress: (progress: number) => Promise<void>,
+  profile: VideoEditProfile,
 ) {
   const filter: string[] = [];
   const labels: string[] = [];
   for (const [index, asset] of assets.entries()) {
     const duration = round(asset.durationSeconds);
     filter.push(
-      `[${index}:v:0]trim=duration=${duration},setpts=PTS-STARTPTS,scale=360:640:force_original_aspect_ratio=decrease,pad=360:640:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p[v${index}]`,
+      `[${index}:v:0]trim=duration=${duration},setpts=PTS-STARTPTS,scale=${profile.width}:${profile.height}:force_original_aspect_ratio=decrease,pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p[v${index}]`,
     );
     if (asset.hasAudio) {
       filter.push(
@@ -140,10 +152,10 @@ async function normalizeSources(
     ...assets.flatMap((asset) => ["-i", asset.localPath]),
     "-filter_complex", filter.join(";"),
     "-map", "[vout]", "-map", "[aout]",
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "31",
-    "-c:a", "aac", "-b:a", "96k", "-ar", "48000",
+    "-c:v", "libx264", "-preset", profile.preset, "-crf", String(profile.normalizeCrf),
+    "-c:a", "aac", "-b:a", profile.audioBitrate, "-ar", "48000",
     "-movflags", "+faststart", "-shortest", destination,
-  ], durationSeconds, onProgress, { start: 25, end: 55 });
+  ], durationSeconds, onProgress, profile.normalizeProgress);
 }
 
 async function applyCutPlan(
@@ -151,6 +163,7 @@ async function applyCutPlan(
   destination: string,
   intervals: KeptInterval[],
   onProgress: (progress: number) => Promise<void>,
+  profile: VideoEditProfile,
 ) {
   const filter: string[] = [];
   const labels: string[] = [];
@@ -175,11 +188,38 @@ async function applyCutPlan(
     "-i", source,
     "-filter_complex", filter.join(";"),
     "-map", "[vout]", "-map", "[aout]",
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "30",
-    "-c:a", "aac", "-b:a", "96k", "-ar", "48000",
+    "-c:v", "libx264", "-preset", profile.preset, "-crf", String(profile.outputCrf),
+    "-c:a", "aac", "-b:a", profile.audioBitrate, "-ar", "48000",
     "-movflags", "+faststart", "-shortest", destination,
-  ], durationSeconds, onProgress, { start: 55, end: 92 });
+  ], durationSeconds, onProgress, profile.cutProgress);
   return round(durationSeconds);
+}
+
+const previewProfile: VideoEditProfile = {
+  audioBitrate: "96k",
+  cutProgress: { start: 55, end: 92 },
+  height: 640,
+  normalizeCrf: 31,
+  normalizeProgress: { start: 25, end: 55 },
+  outputCrf: 30,
+  preset: "veryfast",
+  width: 360,
+};
+
+export async function createEditedVideo(
+  assets: PreviewSourceAsset[],
+  decisions: PreviewCutDecision[],
+  normalizedPath: string,
+  outputPath: string,
+  onProgress: (progress: number) => Promise<void>,
+  profile: VideoEditProfile,
+) {
+  const sourceDurationSeconds = assets.reduce((total, asset) => total + asset.durationSeconds, 0);
+  const intervals = buildKeptIntervals(sourceDurationSeconds, decisions);
+  if (!intervals.length) throw new Error("Bản Smart Cut không còn đoạn nào để dựng video.");
+  await normalizeSources(assets, normalizedPath, onProgress, profile);
+  const durationSeconds = await applyCutPlan(normalizedPath, outputPath, intervals, onProgress, profile);
+  return { durationSeconds, intervalCount: intervals.length, intervals };
 }
 
 export async function createCutPreview(
@@ -189,10 +229,12 @@ export async function createCutPreview(
   outputPath: string,
   onProgress: (progress: number) => Promise<void>,
 ) {
-  const sourceDurationSeconds = assets.reduce((total, asset) => total + asset.durationSeconds, 0);
-  const intervals = buildKeptIntervals(sourceDurationSeconds, decisions);
-  if (!intervals.length) throw new Error("Bản Smart Cut không còn đoạn nào để tạo preview.");
-  await normalizeSources(assets, normalizedPath, onProgress);
-  const durationSeconds = await applyCutPlan(normalizedPath, outputPath, intervals, onProgress);
-  return { durationSeconds, intervalCount: intervals.length };
+  return createEditedVideo(
+    assets,
+    decisions,
+    normalizedPath,
+    outputPath,
+    onProgress,
+    previewProfile,
+  );
 }

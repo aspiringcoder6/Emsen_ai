@@ -8,8 +8,10 @@ import {
   parseCreateVideoUpload,
   parseStartVideoCutPreview,
   parseStartVideoCutSuggestion,
+  parseStartVideoRender,
   parseStartVideoTranscription,
   parseUpdateVideoCutDraft,
+  parseUpdateVideoRenderSettings,
   parseUpdateVideoTranscript,
 } from "../src/modules/video/video.schema.js";
 
@@ -142,4 +144,47 @@ test("validates Smart Cut jobs and user decisions", () => {
     revision: 1,
     status: "draft",
   }), (error) => error instanceof HttpError && error.code === "INVALID_CUT_DECISION");
+});
+
+test("requires explicit confirmation and validates final render settings", () => {
+  assert.deepEqual(parseUpdateVideoRenderSettings({
+    captionAccentColor: "#a8d694",
+    captionPosition: "lower-third",
+    captionPreset: "emsen-clean",
+    captionTextColor: "#ffffff",
+    revision: 7,
+    showBrandMark: true,
+  }), {
+    captionAccentColor: "#A8D694",
+    captionPosition: "lower-third",
+    captionPreset: "emsen-clean",
+    captionTextColor: "#FFFFFF",
+    revision: 7,
+    showBrandMark: true,
+  });
+  assert.deepEqual(parseStartVideoRender({
+    confirmed: true,
+    cutRevision: 3,
+    idempotencyKey: "render-video-01",
+    renderSettingsRevision: 2,
+  }), {
+    confirmed: true,
+    cutRevision: 3,
+    idempotencyKey: "render-video-01",
+    renderSettingsRevision: 2,
+  });
+  assert.throws(() => parseStartVideoRender({
+    confirmed: false,
+    cutRevision: 3,
+    idempotencyKey: "render-video-02",
+    renderSettingsRevision: 2,
+  }), (error) => error instanceof HttpError && error.code === "VIDEO_RENDER_CONFIRMATION_REQUIRED");
+  assert.throws(() => parseUpdateVideoRenderSettings({
+    captionAccentColor: "green",
+    captionPosition: "lower-third",
+    captionPreset: "emsen-clean",
+    captionTextColor: "#FFFFFF",
+    revision: 7,
+    showBrandMark: true,
+  }), (error) => error instanceof HttpError && error.code === "INVALID_CAPTION_COLOR");
 });

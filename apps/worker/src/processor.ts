@@ -10,6 +10,12 @@ import { deleteMediaObject, downloadMediaObject, uploadMediaObject } from "./sto
 import { suggestSmartCuts, type SmartCutTranscriptSegment } from "./smartCut.js";
 import { transcribeVideos } from "./transcription.js";
 import { createCutPreview, type PreviewCutDecision } from "./videoPreview.js";
+import {
+  createFinalVideo,
+  findBrandMarkPath,
+  type RenderSettings,
+  type RenderTranscriptSegment,
+} from "./videoRender.js";
 
 type MediaJob = {
   attempts: number;
@@ -17,7 +23,7 @@ type MediaJob = {
   input: Record<string, unknown>;
   max_attempts: number;
   project_id: string;
-  type: "preview" | "probe" | "suggest-cuts" | "transcribe";
+  type: "preview" | "probe" | "render" | "suggest-cuts" | "transcribe";
   user_id: string;
 };
 
@@ -63,6 +69,43 @@ async function sourceAssets(job: MediaJob) {
 function safeExtension(fileName: string) {
   const extension = extname(fileName).toLocaleLowerCase();
   return /^\.[a-z0-9]{1,8}$/.test(extension) ? extension : ".video";
+}
+
+function renderSettingsFromJob(input: Record<string, unknown>): RenderSettings {
+  const value = input.settings;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Tác vụ xuất video thiếu cài đặt caption.");
+  }
+  const settings = value as Record<string, unknown>;
+  if (
+    (settings.captionPreset !== "emsen-clean" && settings.captionPreset !== "none") ||
+    (settings.captionPosition !== "center" && settings.captionPosition !== "lower-third") ||
+    typeof settings.captionTextColor !== "string" || !/^#[0-9a-f]{6}$/i.test(settings.captionTextColor) ||
+    typeof settings.captionAccentColor !== "string" || !/^#[0-9a-f]{6}$/i.test(settings.captionAccentColor) ||
+    !Number.isInteger(settings.renderSettingsRevision) || Number(settings.renderSettingsRevision) < 1 ||
+    typeof settings.showBrandMark !== "boolean"
+  ) {
+    throw new Error("Cài đặt caption của tác vụ xuất video không hợp lệ.");
+  }
+  return {
+    captionAccentColor: settings.captionAccentColor,
+    captionPosition: settings.captionPosition,
+    captionPreset: settings.captionPreset,
+    captionTextColor: settings.captionTextColor,
+    renderSettingsRevision: Number(settings.renderSettingsRevision),
+    showBrandMark: settings.showBrandMark,
+  };
+}
+
+function outputFileName(title: string) {
+  const slug = title.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60);
+  return `emsen-${slug || "video"}.mp4`;
 }
 
 async function downloadAssets(job: MediaJob, directory: string) {
@@ -453,6 +496,173 @@ async function processPreview(job: MediaJob, directory: string) {
   }
 }
 
+async function processRender(job: MediaJob, directory: string) {
+  const settings = renderSettingsFromJob(job.input);
+  const assets = await downloadAssets(job, directory);
+  const renderResult = await workerDatabase.query<{
+    cut_revision: number;
+    cut_status: "approved" | "draft";
+    decisions: PreviewCutDecision[];
+    project_settings: Record<string, unknown>;
+    project_status: string;
+    segments: RenderTranscriptSegment[];
+    title: string;
+    transcript_revision: number;
+  }>(
+    `SELECT projects.title, projects.status AS project_status,
+            projects.settings AS project_settings,
+            cuts.revision AS cut_revision, cuts.status AS cut_status, cuts.decisions,
+            transcripts.revision AS transcript_revision, transcripts.segments
+     FROM media_projects AS projects
+     JOIN video_cut_drafts AS cuts
+       ON cuts.project_id = projects.id AND cuts.user_id = projects.user_id
+     JOIN video_transcripts AS transcripts
+       ON transcripts.project_id = projects.id AND transcripts.user_id = projects.user_id
+     WHERE projects.id = $1 AND projects.user_id = $2`,
+    [job.project_id, job.user_id],
+  );
+  const render = renderResult.rows[0];
+  if (!render || render.cut_status !== "approved") {
+    throw new Error("Smart Cut cần được duyệt trước khi xuất video.");
+  }
+  const expectedCutRevision = Number(job.input.cutRevision);
+  const expectedTranscriptRevision = Number(job.input.transcriptRevision);
+  const currentSettingsRevision = Number(render.project_settings.renderSettingsRevision) || 1;
+  if (
+    render.project_status !== "rendering" ||
+    render.cut_revision !== expectedCutRevision ||
+    render.transcript_revision !== expectedTranscriptRevision ||
+    currentSettingsRevision !== settings.renderSettingsRevision
+  ) {
+    throw new Error("Dữ liệu dựng video đã thay đổi. Hãy kiểm tra và xuất lại từ phiên bản mới nhất.");
+  }
+  const sourceInputs = assets.map((asset) => {
+    const durationSeconds = probeFromMetadata(asset.metadata);
+    if (!durationSeconds) throw new Error(`Thiếu thời lượng của “${asset.file_name}”. Hãy kiểm tra video lại.`);
+    const probe = asset.metadata.probe as { audioCodec?: unknown } | undefined;
+    return {
+      durationSeconds,
+      hasAudio: typeof probe?.audioCodec === "string" && probe.audioCodec.length > 0,
+      localPath: asset.localPath,
+    };
+  });
+  const normalizedPath = join(directory, "render-source.mp4");
+  const editedPath = join(directory, "render-edited.mp4");
+  const subtitlePath = join(directory, "captions.ass");
+  const outputPath = join(directory, "emsen-final.mp4");
+  const brandMarkPath = settings.showBrandMark ? await findBrandMarkPath() : null;
+  const output = await createFinalVideo(
+    sourceInputs,
+    Array.isArray(render.decisions) ? render.decisions : [],
+    Array.isArray(render.segments) ? render.segments : [],
+    settings,
+    { brandMarkPath, editedPath, normalizedPath, outputPath, subtitlePath },
+    (progress) => setProgress(job.id, progress),
+  );
+  const outputStat = await stat(outputPath);
+  if (!outputStat.size) throw new Error("FFmpeg không tạo được tệp video hoàn chỉnh.");
+
+  const assetId = randomUUID();
+  const objectKey = `users/${job.user_id}/projects/${job.project_id}/final/${assetId}.mp4`;
+  const fileName = outputFileName(render.title);
+  let uploaded = false;
+  let committed = false;
+  try {
+    await uploadMediaObject(objectKey, outputPath, "video/mp4");
+    uploaded = true;
+    await setProgress(job.id, 97);
+    const client = await workerDatabase.connect();
+    try {
+      await client.query("BEGIN");
+      const currentResult = await client.query<{
+        cut_revision: number;
+        cut_status: "approved" | "draft";
+        project_settings: Record<string, unknown>;
+        project_status: string;
+        transcript_revision: number;
+      }>(
+        `SELECT projects.status AS project_status, projects.settings AS project_settings,
+                cuts.revision AS cut_revision, cuts.status AS cut_status,
+                transcripts.revision AS transcript_revision
+         FROM media_projects AS projects
+         JOIN video_cut_drafts AS cuts
+           ON cuts.project_id = projects.id AND cuts.user_id = projects.user_id
+         JOIN video_transcripts AS transcripts
+           ON transcripts.project_id = projects.id AND transcripts.user_id = projects.user_id
+         WHERE projects.id = $1 AND projects.user_id = $2
+         FOR UPDATE OF projects, cuts, transcripts`,
+        [job.project_id, job.user_id],
+      );
+      const current = currentResult.rows[0];
+      if (
+        !current || current.project_status !== "rendering" || current.cut_status !== "approved" ||
+        current.cut_revision !== expectedCutRevision ||
+        current.transcript_revision !== expectedTranscriptRevision ||
+        (Number(current.project_settings.renderSettingsRevision) || 1) !== settings.renderSettingsRevision
+      ) {
+        throw new Error("Dữ liệu thay đổi trong lúc xuất video. Bản vừa dựng sẽ không được ghi đè.");
+      }
+      await client.query(
+        `INSERT INTO media_assets (
+           id, project_id, user_id, kind, status, file_name, mime_type, size_bytes,
+           object_key, idempotency_key, metadata
+         ) VALUES ($1, $2, $3, 'output', 'ready', $4, 'video/mp4', $5, $6, $7, $8::jsonb)`,
+        [
+          assetId,
+          job.project_id,
+          job.user_id,
+          fileName,
+          outputStat.size,
+          objectKey,
+          `render:${job.id}`,
+          JSON.stringify({
+            audioTargetLufs: -16,
+            brandMark: Boolean(brandMarkPath && settings.showBrandMark),
+            captionCount: output.captionCount,
+            captionPreset: settings.captionPreset,
+            cutRevision: expectedCutRevision,
+            durationSeconds: output.durationSeconds,
+            height: 1280,
+            intervalCount: output.intervalCount,
+            purpose: "final-render",
+            renderSettingsRevision: settings.renderSettingsRevision,
+            transcriptRevision: expectedTranscriptRevision,
+            width: 720,
+          }),
+        ],
+      );
+      await client.query(
+        `UPDATE media_jobs
+         SET status = 'succeeded', progress = 100,
+             output = jsonb_build_object(
+               'assetId', $1::uuid,
+               'cutRevision', $2::int,
+               'durationSeconds', $3::double precision,
+               'renderSettingsRevision', $4::int
+             ), error_message = NULL, finished_at = NOW(), updated_at = NOW()
+         WHERE id = $5`,
+        [assetId, expectedCutRevision, output.durationSeconds, settings.renderSettingsRevision, job.id],
+      );
+      await client.query(
+        `UPDATE media_projects
+         SET status = 'completed', revision = revision + 1, updated_at = NOW()
+         WHERE id = $1 AND user_id = $2`,
+        [job.project_id, job.user_id],
+      );
+      await client.query("COMMIT");
+      committed = true;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    if (uploaded && !committed) await deleteMediaObject(objectKey).catch(() => undefined);
+    throw error;
+  }
+}
+
 async function failJob(job: MediaJob, error: unknown) {
   const message = safeMessage(error);
   await workerDatabase.query(
@@ -478,6 +688,29 @@ async function failJob(job: MediaJob, error: unknown) {
        WHERE id = $1 AND user_id = $2`,
       [job.project_id, job.user_id],
     );
+  } else if (job.type === "render") {
+    await workerDatabase.query(
+      `UPDATE media_projects
+       SET status = CASE
+             WHEN EXISTS (
+               SELECT 1
+               FROM video_cut_drafts AS cuts
+               JOIN video_transcripts AS transcripts
+                 ON transcripts.project_id = cuts.project_id AND transcripts.user_id = cuts.user_id
+               WHERE cuts.project_id = $1 AND cuts.user_id = $2
+                 AND cuts.status = 'approved'
+                 AND cuts.transcript_revision = transcripts.revision
+             ) THEN 'ready-to-render'
+             WHEN EXISTS (
+               SELECT 1 FROM video_cut_drafts
+               WHERE project_id = $1 AND user_id = $2
+             ) THEN 'cut-review'
+             ELSE 'transcript-ready'
+           END,
+           revision = revision + 1, updated_at = NOW()
+       WHERE id = $1 AND user_id = $2`,
+      [job.project_id, job.user_id],
+    );
   } else {
     await workerDatabase.query(
       `UPDATE media_projects
@@ -496,7 +729,7 @@ export async function claimNextJob() {
     const result = await client.query<MediaJob>(
       `SELECT id, project_id, user_id, type, attempts, max_attempts, input
        FROM media_jobs
-       WHERE status = 'queued' AND type IN ('probe', 'transcribe', 'suggest-cuts', 'preview')
+       WHERE status = 'queued' AND type IN ('probe', 'transcribe', 'suggest-cuts', 'preview', 'render')
        ORDER BY created_at ASC
        FOR UPDATE SKIP LOCKED
        LIMIT 1`,
@@ -530,6 +763,37 @@ export async function recoverInterruptedJobs() {
          updated_at = NOW()
      WHERE status = 'running' AND updated_at < NOW() - INTERVAL '15 minutes'`,
   );
+  await workerDatabase.query(
+    `UPDATE media_projects AS projects
+     SET status = CASE
+           WHEN EXISTS (
+             SELECT 1
+             FROM video_cut_drafts AS cuts
+             JOIN video_transcripts AS transcripts
+               ON transcripts.project_id = cuts.project_id AND transcripts.user_id = cuts.user_id
+             WHERE cuts.project_id = projects.id AND cuts.user_id = projects.user_id
+               AND cuts.status = 'approved'
+               AND cuts.transcript_revision = transcripts.revision
+           ) THEN 'ready-to-render'
+           WHEN EXISTS (
+             SELECT 1 FROM video_cut_drafts AS cuts
+             WHERE cuts.project_id = projects.id AND cuts.user_id = projects.user_id
+           ) THEN 'cut-review'
+           ELSE 'transcript-ready'
+         END,
+         revision = revision + 1, updated_at = NOW()
+     WHERE projects.status = 'rendering'
+       AND EXISTS (
+         SELECT 1 FROM media_jobs AS failed
+         WHERE failed.project_id = projects.id AND failed.user_id = projects.user_id
+           AND failed.type = 'render' AND failed.status = 'failed'
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM media_jobs AS active
+         WHERE active.project_id = projects.id AND active.user_id = projects.user_id
+           AND active.type = 'render' AND active.status IN ('queued', 'running')
+       )`,
+  );
 }
 
 export async function processMediaJob(job: MediaJob) {
@@ -540,6 +804,7 @@ export async function processMediaJob(job: MediaJob) {
     else if (job.type === "transcribe") await processTranscription(job, directory);
     else if (job.type === "suggest-cuts") await processSmartCut(job);
     else if (job.type === "preview") await processPreview(job, directory);
+    else if (job.type === "render") await processRender(job, directory);
     else await finishJob(job.id);
     console.log(`[worker:${job.type}] completed job ${job.id}`);
   } catch (error) {

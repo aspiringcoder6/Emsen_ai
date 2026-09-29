@@ -124,7 +124,11 @@ export function createVideoUploadUrl(objectKey: string) {
   return { expiresAt: ticket.expiresAt, uploadUrl: ticket.url };
 }
 
-function createPresignedObjectUrl(method: "GET" | "PUT", objectKey: string) {
+function createPresignedObjectUrl(
+  method: "GET" | "PUT",
+  objectKey: string,
+  responseParameters: Record<string, string> = {},
+) {
   requireStorage();
   const url = storageUrl(objectKey);
   const now = new Date();
@@ -137,6 +141,7 @@ function createPresignedObjectUrl(method: "GET" | "PUT", objectKey: string) {
     ["X-Amz-Date", amzDate],
     ["X-Amz-Expires", String(config.mediaStorage.uploadExpiresSeconds)],
     ["X-Amz-SignedHeaders", "host"],
+    ...Object.entries(responseParameters),
   ].map(([key, value]) => `${encode(key!)}=${encode(value!)}`).sort().join("&");
   const canonicalRequest = [
     method,
@@ -156,6 +161,15 @@ function createPresignedObjectUrl(method: "GET" | "PUT", objectKey: string) {
 export function createVideoPlaybackUrl(objectKey: string) {
   const ticket = createPresignedObjectUrl("GET", objectKey);
   return { expiresAt: ticket.expiresAt, playbackUrl: ticket.url };
+}
+
+export function createVideoDownloadUrl(objectKey: string, fileName: string) {
+  const safeFileName = fileName.replace(/["\\\r\n]/g, "-");
+  const ticket = createPresignedObjectUrl("GET", objectKey, {
+    "response-content-disposition": `attachment; filename="${safeFileName}"`,
+    "response-content-type": "video/mp4",
+  });
+  return { downloadUrl: ticket.url, expiresAt: ticket.expiresAt };
 }
 
 export async function inspectVideoObject(objectKey: string) {

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { ContentPlanVersionDto, ScriptDocumentDto, UpdateScriptRequestDto } from "@creator-flow/contracts";
 import { parseCreateScript, parseScriptAssist, parseScriptBrainstorm, parseStoryboard, parseUpdateScript } from "../src/modules/scripts/script.schema.js";
 import { synchronizeScriptWithPlan } from "../src/modules/scripts/scriptPlanSync.js";
-import { buildFlexibleTimelineGuide, countSpokenWords, normalizeScriptTimeline, scriptGenerationIssues, scriptTimelineIssues, scriptWordBudget } from "../src/modules/scripts/scriptTimeline.js";
+import { buildFlexibleTimelineGuide, countSpokenWords, normalizeScriptTimeline, repairScriptTimeline, scriptGenerationBlockingIssues, scriptGenerationIssues, scriptTimelineIssues, scriptWordBudget } from "../src/modules/scripts/scriptTimeline.js";
 
 const validDraft: UpdateScriptRequestDto = {
   revision: 1,
@@ -133,6 +133,39 @@ test("rejects a visibly short script for its selected duration", () => {
   }, 60);
   assert.ok(issues.some((issue) => issue.includes("Tổng lời thoại")));
   assert.ok(issues.some((issue) => issue.includes("Phần nội dung")));
+  assert.ok(scriptGenerationBlockingIssues({
+    hook: "Có những hôm ăn uống đến phát khóc.",
+    body: "Tâm sự thật lòng.",
+    cta: "Bạn có đang gặp khó khăn nào khi ăn uống không?",
+    storyboard: [],
+  }, 60).length > 0);
+});
+
+test("repairs common AI timeline formatting without discarding its dialogue", () => {
+  const content = {
+    hook: "**Hook:** Tôi đã thử mặc đồ tổng giá trị dưới 300k đi làm cả tuần và cái kết bất ngờ.",
+    body: "- Ngày đầu tiên tôi chọn chiếc áo dễ phối nhất. Tôi đổi phụ kiện thay vì mua thêm đồ.\n- Đến giữa tuần, đồng nghiệp bắt đầu hỏi vì sao trông mỗi ngày vẫn khác nhau. Tôi nhận ra cách phối quan trọng hơn số lượng quần áo.",
+    cta: "CTA: Bạn muốn tôi chia sẻ công thức phối cụ thể không?",
+    storyboard: [],
+  };
+  const repaired = repairScriptTimeline(content, 60);
+  assert.deepEqual(scriptTimelineIssues(repaired, 60), []);
+  assert.match(repaired.hook, /^\[0:00–0:05\] \[Nói trực tiếp\]/);
+  assert.match(repaired.cta, /–1:00\]/);
+  assert.match(repaired.body, /đồng nghiệp bắt đầu hỏi/);
+  assert.ok(repaired.body.split("\n").length >= 2);
+});
+
+test("does not reject a complete script only because the selected hook is slightly long", () => {
+  const bodyWords = Array.from({ length: 110 }, (_, index) => `nội-dung-${index + 1}`);
+  const content = {
+    hook: "[0:00–0:05] [Nói trực tiếp] Tôi đã thử mặc đồ tổng giá trị dưới 300k đi làm cả tuần và cái kết bất ngờ.",
+    body: `[0:05–0:30] [Nói trực tiếp] ${bodyWords.slice(0, 55).join(" ")}\n[0:30–0:55] [Voice-over] ${bodyWords.slice(55).join(" ")}`,
+    cta: "[0:55–1:00] [Nói trực tiếp] Bạn muốn tôi chia sẻ cách phối cụ thể không?",
+    storyboard: [],
+  };
+  assert.ok(scriptGenerationIssues(content, 60).some((issue) => issue.includes("Hook nên tối đa")));
+  assert.deepEqual(scriptGenerationBlockingIssues(content, 60), []);
 });
 
 test("validates creative brainstorming inputs", () => {

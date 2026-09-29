@@ -3,8 +3,10 @@ import type {
   CreateVideoUploadRequestDto,
   StartVideoCutPreviewRequestDto,
   StartVideoCutSuggestionRequestDto,
+  StartVideoRenderRequestDto,
   StartVideoTranscriptionRequestDto,
   UpdateVideoCutDraftRequestDto,
+  UpdateVideoRenderSettingsRequestDto,
   UpdateVideoTranscriptRequestDto,
 } from "@creator-flow/contracts";
 import { HttpError } from "../../shared/http.js";
@@ -98,6 +100,56 @@ export function parseStartVideoCutPreview(value: unknown): StartVideoCutPreviewR
   return {
     cutRevision: body.cutRevision as number,
     idempotencyKey: idempotencyKey(body.idempotencyKey),
+  };
+}
+
+export function parseStartVideoRender(value: unknown): StartVideoRenderRequestDto {
+  const body = object(value);
+  if (body.confirmed !== true) {
+    throw new HttpError(400, "VIDEO_RENDER_CONFIRMATION_REQUIRED", "Bạn cần xác nhận trước khi Emsen xuất video hoàn chỉnh.");
+  }
+  if (!Number.isInteger(body.cutRevision) || (body.cutRevision as number) < 1) {
+    throw new HttpError(400, "INVALID_CUT_REVISION", "Phiên bản Smart Cut không hợp lệ.");
+  }
+  if (!Number.isInteger(body.renderSettingsRevision) || (body.renderSettingsRevision as number) < 1) {
+    throw new HttpError(400, "INVALID_RENDER_SETTINGS_REVISION", "Phiên bản cài đặt xuất video không hợp lệ.");
+  }
+  return {
+    confirmed: true,
+    cutRevision: body.cutRevision as number,
+    idempotencyKey: idempotencyKey(body.idempotencyKey),
+    renderSettingsRevision: body.renderSettingsRevision as number,
+  };
+}
+
+function color(value: unknown, name: string) {
+  if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) {
+    throw new HttpError(400, "INVALID_CAPTION_COLOR", `${name} chưa đúng định dạng màu.`);
+  }
+  return value.toUpperCase();
+}
+
+export function parseUpdateVideoRenderSettings(value: unknown): UpdateVideoRenderSettingsRequestDto {
+  const body = object(value);
+  if (!Number.isInteger(body.revision) || (body.revision as number) < 1) {
+    throw new HttpError(400, "INVALID_VIDEO_REVISION", "Phiên bản dự án video không hợp lệ.");
+  }
+  if (body.captionPreset !== "emsen-clean" && body.captionPreset !== "none") {
+    throw new HttpError(400, "INVALID_CAPTION_PRESET", "Mẫu phụ đề chưa hợp lệ.");
+  }
+  if (body.captionPosition !== "center" && body.captionPosition !== "lower-third") {
+    throw new HttpError(400, "INVALID_CAPTION_POSITION", "Vị trí phụ đề chưa hợp lệ.");
+  }
+  if (typeof body.showBrandMark !== "boolean") {
+    throw new HttpError(400, "INVALID_BRAND_MARK", "Tùy chọn logo chưa hợp lệ.");
+  }
+  return {
+    captionAccentColor: color(body.captionAccentColor, "Màu nhấn"),
+    captionPosition: body.captionPosition,
+    captionPreset: body.captionPreset,
+    captionTextColor: color(body.captionTextColor, "Màu chữ"),
+    revision: body.revision as number,
+    showBrandMark: body.showBrandMark,
   };
 }
 

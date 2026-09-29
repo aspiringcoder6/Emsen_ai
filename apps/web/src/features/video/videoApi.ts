@@ -2,11 +2,14 @@ import type {
   CompleteVideoUploadResponseDto,
   CreateVideoProjectRequestDto,
   CreateVideoUploadRequestDto,
+  StartVideoRenderRequestDto,
   StartVideoCutPreviewRequestDto,
   StartVideoCutSuggestionRequestDto,
   StartVideoTranscriptionRequestDto,
   UpdateVideoCutDraftRequestDto,
+  UpdateVideoRenderSettingsRequestDto,
   UpdateVideoTranscriptRequestDto,
+  VideoDownloadTicketDto,
   VideoProjectDto,
   VideoPlaybackTicketDto,
   VideoUploadTicketDto,
@@ -21,6 +24,9 @@ export const getVideoProject = (projectId: string) =>
 
 export const getVideoPlayback = (projectId: string, assetId: string) =>
   apiRequest<VideoPlaybackTicketDto>(`/video/projects/${projectId}/assets/${assetId}/playback`);
+
+export const getVideoDownload = (projectId: string, assetId: string) =>
+  apiRequest<VideoDownloadTicketDto>(`/video/projects/${projectId}/assets/${assetId}/download`);
 
 export const createVideoProject = (body: CreateVideoProjectRequestDto) =>
   apiRequest<VideoProjectDto>("/video/projects", { method: "POST", body });
@@ -70,6 +76,22 @@ export const startVideoCutPreview = (
   projectId: string,
   body: StartVideoCutPreviewRequestDto,
 ) => apiRequest<VideoProjectDto>(`/video/projects/${projectId}/cut-preview`, {
+  method: "POST",
+  body,
+});
+
+export const updateVideoRenderSettings = (
+  projectId: string,
+  body: UpdateVideoRenderSettingsRequestDto,
+) => apiRequest<VideoProjectDto>(`/video/projects/${projectId}/render-settings`, {
+  method: "PUT",
+  body,
+});
+
+export const startVideoRender = (
+  projectId: string,
+  body: StartVideoRenderRequestDto,
+) => apiRequest<VideoProjectDto>(`/video/projects/${projectId}/render`, {
   method: "POST",
   body,
 });

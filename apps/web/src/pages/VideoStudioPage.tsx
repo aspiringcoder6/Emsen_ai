@@ -24,6 +24,8 @@ import {
 import { EmsenAvatar } from "../components/branding/EmsenAvatar";
 import { CreateVideoProjectPanel } from "../features/video/components/CreateVideoProjectPanel";
 import { CutPreviewPlayer } from "../features/video/components/CutPreviewPlayer";
+import { FinalVideoPlayer } from "../features/video/components/FinalVideoPlayer";
+import { RenderSettingsPanel, type VideoRenderSettingsForm } from "../features/video/components/RenderSettingsPanel";
 import { SourceVideoUpload, type VideoUploadProgress } from "../features/video/components/SourceVideoUpload";
 import { SourceVideoPlayer } from "../features/video/components/SourceVideoPlayer";
 import { SmartCutEditor } from "../features/video/components/SmartCutEditor";
@@ -33,10 +35,12 @@ import {
   createVideoProject,
   getVideoProject,
   getVideoWorkspace,
+  startVideoRender,
   startVideoCutPreview,
   startVideoCutSuggestion,
   startVideoTranscription,
   updateVideoCutDraft,
+  updateVideoRenderSettings,
   updateVideoTranscript,
   uploadVideoSource,
 } from "../features/video/videoApi";
@@ -84,6 +88,7 @@ export function VideoStudioPage({
   const [processing, setProcessing] = useState(false);
   const [cutting, setCutting] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [renderAction, setRenderAction] = useState(false);
   const [recorderOpen, setRecorderOpen] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -140,9 +145,15 @@ export function VideoStudioPage({
           ...current,
           projects: [project, ...current.projects.filter((item) => item.id !== project.id)],
         } : current);
+        const latestRenderJob = project.jobs.find((job) => job.type === "render");
+        const renderActive = project.jobs.some((job) => job.type === "render" && ["queued", "running"].includes(job.status));
         const latestPreviewJob = project.jobs.find((job) => job.type === "preview");
         const previewActive = project.jobs.some((job) => job.type === "preview" && ["queued", "running"].includes(job.status));
-        if (latestPreviewJob?.status === "failed" && !previewActive) {
+        if (latestRenderJob?.status === "failed" && !renderActive) {
+          setError(latestRenderJob.errorMessage ?? "Emsen chưa xuất được video hoàn chỉnh. Bạn có thể thử lại.");
+        } else if (project.finalOutput && !project.finalOutput.stale && !renderActive) {
+          setNotice("Video hoàn chỉnh đã sẵn sàng. Bạn có thể xem lại hoặc tải MP4 xuống.");
+        } else if (latestPreviewJob?.status === "failed" && !previewActive) {
           setError(latestPreviewJob.errorMessage ?? "Emsen chưa tạo được bản preview. Bạn có thể thử lại.");
         } else if (project.cutPreview && !project.cutPreview.stale && !previewActive) {
           setNotice("Bản xem thử Smart Cut đã sẵn sàng. Hãy nghe kỹ các điểm nối trước khi duyệt.");
@@ -305,6 +316,60 @@ export function VideoStudioPage({
     }
   };
 
+  const handleSaveRenderSettings = async (settings: VideoRenderSettingsForm) => {
+    if (!selected || renderAction) return;
+    setRenderAction(true);
+    setError("");
+    try {
+      const project = await updateVideoRenderSettings(selected.id, {
+        ...settings,
+        revision: selected.revision,
+      });
+      replaceProject(project);
+      setNotice("Đã lưu kiểu caption và logo cho bản xuất tiếp theo.");
+    } catch (settingsError) {
+      const message = settingsError instanceof Error ? settingsError.message : "Chưa lưu được cài đặt xuất video.";
+      setError(message);
+      throw settingsError;
+    } finally {
+      setRenderAction(false);
+    }
+  };
+
+  const handleStartRender = async (settings: VideoRenderSettingsForm) => {
+    if (!selected || renderAction) return;
+    setRenderAction(true);
+    setError("");
+    setNotice("");
+    try {
+      const saved = selected.settings.captionPreset === settings.captionPreset &&
+        selected.settings.captionPosition === settings.captionPosition &&
+        selected.settings.captionTextColor === settings.captionTextColor &&
+        selected.settings.captionAccentColor === settings.captionAccentColor &&
+        selected.settings.showBrandMark === settings.showBrandMark
+        ? selected
+        : await updateVideoRenderSettings(selected.id, { ...settings, revision: selected.revision });
+      if (!saved.cutDraft || saved.cutDraft.status !== "approved" || saved.cutDraft.stale) {
+        throw new Error("Smart Cut mới nhất cần được duyệt trước khi xuất video.");
+      }
+      replaceProject(saved);
+      const queued = await startVideoRender(saved.id, {
+        confirmed: true,
+        cutRevision: saved.cutDraft.revision,
+        idempotencyKey: crypto.randomUUID(),
+        renderSettingsRevision: saved.settings.renderSettingsRevision,
+      });
+      replaceProject(queued);
+      setNotice("Emsen đang xuất video ở nền. Bạn có thể rời trang và quay lại sau.");
+    } catch (renderError) {
+      const message = renderError instanceof Error ? renderError.message : "Chưa bắt đầu xuất video được.";
+      setError(message);
+      throw renderError;
+    } finally {
+      setRenderAction(false);
+    }
+  };
+
   if (!active) return null;
 
   const doneSteps = selected ? completedPipelineSteps(selected) : 0;
@@ -313,6 +378,7 @@ export function VideoStudioPage({
   const activeJob = selected?.jobs.find((job) => ["queued", "running"].includes(job.status));
   const activeCutJob = selected?.jobs.find((job) => job.type === "suggest-cuts" && ["queued", "running"].includes(job.status));
   const activePreviewJob = selected?.jobs.find((job) => job.type === "preview" && ["queued", "running"].includes(job.status));
+  const activeRenderJob = selected?.jobs.find((job) => job.type === "render" && ["queued", "running"].includes(job.status));
   const failedJob = selected?.jobs.find((job) => job.status === "failed");
   const sourceLocked = Boolean(selected && !["setup", "uploaded", "failed"].includes(selected.status));
 
@@ -439,8 +505,25 @@ export function VideoStudioPage({
                 </section>
               )}
 
-              {selected.cutDraft && <SmartCutEditor canRegenerate={selected.transcript?.status === "approved"} cutDraft={selected.cutDraft} targetDurationSeconds={selected.settings.targetDurationSeconds} regenerating={cutting || Boolean(activeCutJob)} previewAvailable={Boolean(selected.cutPreview)} previewCurrent={Boolean(selected.cutPreview && !selected.cutPreview.stale)} previewing={previewing || Boolean(activePreviewJob)} onCreatePreview={handleCreateCutPreview} onRegenerate={handleStartSmartCut} onSave={handleSaveCutDraft} />}
+              {selected.cutDraft && selected.status !== "rendering" && <SmartCutEditor canRegenerate={selected.transcript?.status === "approved"} cutDraft={selected.cutDraft} targetDurationSeconds={selected.settings.targetDurationSeconds} regenerating={cutting || Boolean(activeCutJob)} previewAvailable={Boolean(selected.cutPreview)} previewCurrent={Boolean(selected.cutPreview && !selected.cutPreview.stale)} previewing={previewing || Boolean(activePreviewJob)} onCreatePreview={handleCreateCutPreview} onRegenerate={handleStartSmartCut} onSave={handleSaveCutDraft} />}
               {selected.cutPreview && <CutPreviewPlayer preview={selected.cutPreview} projectId={selected.id} />}
+
+              {selected.cutDraft?.status === "approved" && !selected.cutDraft.stale && (
+                <RenderSettingsPanel
+                  busy={renderAction || Boolean(activeRenderJob)}
+                  onRender={handleStartRender}
+                  onSave={handleSaveRenderSettings}
+                  project={selected}
+                />
+              )}
+
+              {activeRenderJob && (
+                <section className="rounded-[22px] border border-[#C9DEEA] bg-gradient-to-r from-[#EEF6FB] to-white p-4 sm:p-5">
+                  <div className="flex items-center gap-4"><EmsenAvatar activity="working" className="h-14 w-14 shrink-0" /><div className="min-w-0 flex-1"><p className="text-sm font-bold text-[#3F617C]">Đang xuất video hoàn chỉnh…</p><p className="mt-1 text-xs leading-5 text-[#6D8292]">Đang áp caption, logo và cân bằng âm lượng. Bạn có thể chuyển sang trang khác.</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#D6E6F0]"><span className="block h-full rounded-full bg-[#5F91B4] transition-all" style={{ width: `${Math.max(4, activeRenderJob.progress)}%` }} /></div><p className="mt-1.5 text-right text-[10px] font-bold text-[#68849A]">{activeRenderJob.status === "queued" ? "Đang chờ" : `${activeRenderJob.progress}%`}</p></div></div>
+                </section>
+              )}
+
+              {selected.finalOutput && <FinalVideoPlayer output={selected.finalOutput} projectId={selected.id} />}
             </div>
           ) : null}
         </div>
