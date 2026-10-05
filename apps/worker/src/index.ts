@@ -2,6 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { workerConfig } from "./config.js";
 import { workerDatabase } from "./database.js";
 import { claimNextJob, processMediaJob, recoverInterruptedJobs } from "./processor.js";
+import { claimNextStoryboardImageJob, processStoryboardImage, recoverInterruptedStoryboardImages } from "./storyboardImage.js";
 
 let stopping = false;
 
@@ -15,14 +16,38 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 async function run() {
   await workerDatabase.query("SELECT 1");
   await recoverInterruptedJobs();
+  await recoverInterruptedStoryboardImages();
   console.log("[worker] media processor is ready");
+
+  let preferImage = true;
+  let lastImageRecovery = Date.now();
 
   while (!stopping) {
     try {
+      if (Date.now() - lastImageRecovery > 30_000) {
+        await recoverInterruptedStoryboardImages();
+        lastImageRecovery = Date.now();
+      }
+      if (preferImage) {
+        const imageJob = await claimNextStoryboardImageJob();
+        if (imageJob) {
+          await processStoryboardImage(imageJob);
+          preferImage = false;
+          continue;
+        }
+      }
       const job = await claimNextJob();
       if (job) {
         await processMediaJob(job);
+        preferImage = true;
         continue;
+      }
+      if (!preferImage) {
+        const imageJob = await claimNextStoryboardImageJob();
+        if (imageJob) {
+          await processStoryboardImage(imageJob);
+          continue;
+        }
       }
       await delay(workerConfig.pollIntervalMs);
     } catch (error) {

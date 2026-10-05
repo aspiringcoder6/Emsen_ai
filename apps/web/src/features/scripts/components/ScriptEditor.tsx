@@ -4,14 +4,12 @@ import type {
   ScriptAssistResponseDto,
   ScriptDocumentDto,
   ScriptReferenceAssetDto,
-  ScriptStoryboardFrameDto,
 } from "@creator-flow/contracts";
 import {
   ArrowLeft,
   Bot,
   Check,
   ChevronDown,
-  ChevronUp,
   Clipboard,
   Clock3,
   Download,
@@ -40,6 +38,8 @@ import { countScriptWords, recommendedScriptWords, scriptDurationPresets } from 
 import { parseTimelineText, serializeTimelineText } from "../scriptTimeline";
 
 const inputClass = "mt-2 w-full rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2.5 text-sm font-normal leading-6 text-[#31583A] outline-none transition focus:border-[#72B65D] focus:ring-2 focus:ring-[#DDEED6]";
+import { StoryboardBoard } from "./StoryboardBoard";
+
 const storyboardGuideStorageKey = "emsen:storyboard-guide-seen";
 
 const supportedReferenceMedia = new Set([
@@ -584,6 +584,8 @@ export function ScriptEditor({
   onSettings: () => void;
   onStartVideo: () => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"dialogue" | "storyboard">("dialogue");
+  const [storyboardUploading, setStoryboardUploading] = useState(false);
   const [storyboardAssistantOpen, setStoryboardAssistantOpen] = useState(false);
   const [storyboardRequested, setStoryboardRequested] = useState(draft.content.storyboard.length > 0);
   const [storyboardExplainerOpen, setStoryboardExplainerOpen] = useState(false);
@@ -594,6 +596,8 @@ export function ScriptEditor({
   }, [notice]);
 
   useEffect(() => {
+    setActiveTab("dialogue");
+    setStoryboardUploading(false);
     setStoryboardRequested(draft.content.storyboard.length > 0);
     setStoryboardExplainerOpen(false);
     setStoryboardAssistantOpen(false);
@@ -607,28 +611,8 @@ export function ScriptEditor({
   const changeSettings = (patch: Partial<ScriptDocumentDto["settings"]>) => applyChange({ ...draft, settings: { ...draft.settings, ...patch } });
   const changeAdvanced = (patch: Partial<ScriptDocumentDto["advancedSettings"]>) => applyChange({ ...draft, advancedSettings: { ...draft.advancedSettings, ...patch } });
   const changeStrategy = (patch: Partial<ScriptDocumentDto["creativeStrategy"]>) => applyChange({ ...draft, creativeStrategy: { ...draft.creativeStrategy, ...patch } });
-  const updateFrame = (id: string, patch: Partial<ScriptStoryboardFrameDto>) => changeContent({ storyboard: draft.content.storyboard.map((frame) => frame.id === id ? { ...frame, ...patch } : frame) });
-  const moveFrame = (index: number, direction: -1 | 1) => {
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= draft.content.storyboard.length) return;
-    const frames = [...draft.content.storyboard];
-    [frames[index], frames[nextIndex]] = [frames[nextIndex]!, frames[index]!];
-    changeContent({ storyboard: frames });
-  };
-  const addFrame = () => changeContent({ storyboard: [...draft.content.storyboard, {
-    id: crypto.randomUUID(),
-    title: `Keyframe ${String(draft.content.storyboard.length + 1).padStart(2, "0")}`,
-    visual: "",
-    visualPurpose: "",
-    broll: "",
-    dialogue: "",
-    emotionalBeat: "",
-    transition: "",
-    retentionRole: "",
-    direction: "",
-    durationSeconds: 5,
-  }] });
   const startStoryboard = async (withEmsen: boolean) => {
+    setActiveTab("storyboard");
     setStoryboardRequested(true);
     setStoryboardExplainerOpen(false);
     window.localStorage.setItem(storyboardGuideStorageKey, "true");
@@ -676,7 +660,6 @@ export function ScriptEditor({
   const ctaTimeline = parseTimelineText(draft.content.cta);
   const timelineEndSeconds = ctaTimeline.at(-1)?.endSeconds;
   const timelineNeedsUpdate = timelineEndSeconds !== undefined && timelineEndSeconds !== draft.settings.targetDurationSeconds;
-  const storyboardDuration = draft.content.storyboard.reduce((total, frame) => total + frame.durationSeconds, 0);
   const planSync = draft.planReference?.sync;
   const appliedSyncLabels = planSync?.appliedFields.map((field) => scriptSyncFieldLabels[field]) ?? [];
   const preservedSyncLabels = planSync?.preservedFields.map((field) => scriptSyncFieldLabels[field]) ?? [];
@@ -685,13 +668,13 @@ export function ScriptEditor({
     <section className="mx-auto max-w-[1280px] space-y-4">
       <header className="sticky top-0 z-20 rounded-[22px] border border-[#D9E8D4] bg-[rgba(255,254,249,0.96)] p-3 shadow-[0_12px_35px_rgba(55,85,57,0.1)] backdrop-blur-xl sm:p-4">
         <div className="flex flex-wrap items-center gap-2.5">
-          <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-xl border border-[#DDE8D6] bg-white px-3 py-2.5 text-xs font-bold"><ArrowLeft size={15} /> <span className="hidden sm:inline">Thư viện</span></button>
+          <button type="button" onClick={onBack} disabled={storyboardUploading} className="inline-flex items-center gap-2 rounded-xl border border-[#DDE8D6] bg-white px-3 py-2.5 text-xs font-bold"><ArrowLeft size={15} /> <span className="hidden sm:inline">Thư viện</span></button>
           <div className="min-w-[190px] flex-1">
             <input value={draft.title} maxLength={250} placeholder="Tên kịch bản" onChange={(event) => applyChange({ ...draft, title: event.target.value })} className="w-full bg-transparent text-base font-bold text-[#284D31] outline-none sm:text-xl" />
             <p className="mt-0.5 truncate text-[11px] text-[#748A74]">{draft.settings.platform || "Chưa chọn nền tảng"} · {formatScriptDate(draft.settings.scheduledFor)} · {wordCount} từ / gợi ý {wordRange.min}–{wordRange.max}</p>
           </div>
 
-          <button type="button" disabled={dirty || saving} onClick={onStartVideo} title={dirty ? "Hãy lưu kịch bản trước khi tạo dự án video" : "Tạo dự án dựng từ kịch bản này"} className="inline-flex items-center gap-2 rounded-xl border border-[#C8DBC1] bg-[#F4FAF0] px-3 py-2.5 text-xs font-bold text-[#3F8240] disabled:cursor-not-allowed disabled:opacity-45"><Film size={15} /> <span className="hidden sm:inline">Dựng video</span></button>
+          <button type="button" disabled={dirty || saving || storyboardUploading} onClick={onStartVideo} title={dirty ? "Hãy lưu kịch bản trước khi tạo dự án video" : "Tạo dự án dựng từ kịch bản này"} className="inline-flex items-center gap-2 rounded-xl border border-[#C8DBC1] bg-[#F4FAF0] px-3 py-2.5 text-xs font-bold text-[#3F8240] disabled:cursor-not-allowed disabled:opacity-45"><Film size={15} /> <span className="hidden sm:inline">Dựng video</span></button>
 
           <details className="relative">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-[#DDE8D6] bg-white px-3 py-2.5 text-xs font-bold text-[#31583A]"><Download size={15} /> Xuất <ChevronDown size={13} /></summary>
@@ -704,7 +687,7 @@ export function ScriptEditor({
 
           <button type="button" onClick={onDelete} aria-label="Xóa kịch bản" className="rounded-xl border border-[#F0D5D0] bg-white p-2.5 text-[#A15B55] hover:bg-[#FFF0EC]"><Trash2 size={15} /></button>
           <select value={draft.status} aria-label="Trạng thái kịch bản" onChange={(event) => applyChange({ ...draft, status: event.target.value as ScriptDocumentDto["status"] })} style={{ color: status.color, background: status.surface }} className="rounded-xl border-0 px-3 py-2.5 text-xs font-bold">{scriptStatuses.map((value) => <option key={value} value={value}>{scriptStatusConfig[value].label}</option>)}</select>
-          <button type="button" disabled={saving || !dirty || !draft.title.trim()} onClick={onSave} className="inline-flex items-center gap-2 rounded-xl bg-[#4E8052] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{saving ? <LoaderCircle size={16} className="animate-spin" /> : <Save size={16} />} <span className="hidden sm:inline">Lưu</span></button>
+          <button type="button" disabled={saving || storyboardUploading || !dirty || !draft.title.trim()} onClick={onSave} className="inline-flex items-center gap-2 rounded-xl bg-[#4E8052] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{saving ? <LoaderCircle size={16} className="animate-spin" /> : <Save size={16} />} <span className="hidden sm:inline">Lưu</span></button>
         </div>
       </header>
 
@@ -718,8 +701,14 @@ export function ScriptEditor({
         </section>
       )}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_310px]">
+      <nav aria-label="Nội dung kịch bản" className="flex gap-2 rounded-2xl border border-[#DDE8D6] bg-white p-2">
+        <button type="button" aria-pressed={activeTab === "dialogue"} disabled={storyboardUploading} onClick={() => setActiveTab("dialogue")} className={`rounded-xl px-5 py-2.5 text-sm font-bold ${activeTab === "dialogue" ? "bg-[#EAF6E4] text-[#31583A]" : "text-[#879487]"}`}>Lời thoại</button>
+        <button type="button" aria-pressed={activeTab === "storyboard"} onClick={() => setActiveTab("storyboard")} className={`rounded-xl px-5 py-2.5 text-sm font-bold ${activeTab === "storyboard" ? "bg-[#F3EAF1] text-[#72506B]" : "text-[#879487]"}`}>Storyboard · {draft.content.storyboard.length} cảnh</button>
+      </nav>
+      <div className={`grid items-start gap-4 ${activeTab === "dialogue" ? "xl:grid-cols-[minmax(0,1fr)_310px]" : ""}`}>
         <div className="space-y-3">
+          {activeTab === "dialogue" && <>
+
           {draft.creativeStrategy.selectedConcept && <section className="rounded-[22px] border border-[#E3D6E1] bg-gradient-to-r from-[#FBF4FA] to-white p-4 sm:p-5">
             <div className="flex items-start gap-3">
               <span className="rounded-full bg-[#F0E2EE] px-2.5 py-1 text-[10px] font-bold text-[#825277]">Góc đã chọn · {draft.creativeStrategy.selectedConcept.label}</span>
@@ -783,63 +772,15 @@ export function ScriptEditor({
             </section>
           ) : null}
 
-          {storyboardRequested || draft.content.storyboard.length ? (
-          <details className="group rounded-[22px] border border-[#DDEBD6] bg-white">
-            <summary className="flex cursor-pointer list-none items-center gap-3 p-4 sm:p-5">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#F3EAF1] text-[#8B557D]"><Film size={18} /></span>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-bold text-[#284D31]">Storyboard</h3>
-                <p className="text-[11px] text-[#879487]">{draft.content.storyboard.length} cảnh · {storyboardDuration} giây</p>
-              </div>
-              <span className="hidden text-xs font-bold text-[#748A74] sm:inline">Chỉnh cảnh quay</span>
-              <ChevronDown size={17} className="text-[#748A74] transition group-open:rotate-180" />
-            </summary>
+          </>}
+          {activeTab === "storyboard" && <>
+            <StoryboardBoard key={draft.id} scriptId={draft.id} scriptRevision={draft.revision} frames={draft.content.storyboard} settings={draft.settings} disabled={saving || assisting === "storyboard"} assistantOpen={storyboardAssistantOpen} onToggleAssistant={() => setStoryboardAssistantOpen((value) => !value)} onChange={(storyboard) => changeContent({ storyboard })} onUploadBusy={setStoryboardUploading} />
+            {storyboardAssistantOpen && <AiPrompt section="storyboard" busy={assisting === "storyboard"} enabled={aiConfigured} onAsk={(prompt, referenceAssets) => onAssist("storyboard", prompt, referenceAssets)} onClose={() => setStoryboardAssistantOpen(false)} onSettings={onSettings} />}
+          </>}
 
-            <div className="border-t border-[#E8EEE5] p-4 sm:p-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={addFrame} disabled={draft.content.storyboard.length >= 16} className="inline-flex items-center gap-2 rounded-xl border border-[#C8DBC1] px-3 py-2 text-xs font-bold disabled:opacity-40"><Plus size={14} /> Thêm cảnh</button>
-                <button type="button" aria-expanded={storyboardAssistantOpen} onClick={() => setStoryboardAssistantOpen((value) => !value)} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${storyboardAssistantOpen ? "bg-[#EAF6E4] text-[#31583A]" : "border border-[#D7E5D1] text-[#3F8240]"}`}><Sparkles size={14} /> Nhờ Emsen chia cảnh</button>
-              </div>
-              {storyboardAssistantOpen && <AiPrompt section="storyboard" busy={assisting === "storyboard"} enabled={aiConfigured} onAsk={(prompt, referenceAssets) => onAssist("storyboard", prompt, referenceAssets)} onClose={() => setStoryboardAssistantOpen(false)} onSettings={onSettings} />}
-
-              <div className="mt-4 space-y-2">
-                {draft.content.storyboard.map((frame, index) => (
-                  <details key={frame.id} className="rounded-2xl border border-[#E8DED8] bg-[#FFFCF8]">
-                    <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3 sm:px-4">
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-[#EAF6E4] text-xs font-black text-[#3F8240]">{index + 1}</span>
-                      <span className="min-w-0 flex-1 truncate text-sm font-bold text-[#31583A]">{frame.title || `Cảnh ${index + 1}`}</span>
-                      <span className="text-[11px] text-[#879487]">{frame.durationSeconds}s</span>
-                      <ChevronDown size={15} className="text-[#879487]" />
-                    </summary>
-                    <div className="border-t border-[#EFE8E2] p-3 sm:p-4">
-                      <div className="flex items-end gap-2">
-                        <label className="min-w-0 flex-1 text-[11px] font-bold">Tên cảnh<input className={inputClass} maxLength={120} value={frame.title} onChange={(event) => updateFrame(frame.id, { title: event.target.value })} /></label>
-                        <button type="button" onClick={() => moveFrame(index, -1)} disabled={index === 0} className="mb-0.5 rounded-lg p-2 disabled:opacity-20" aria-label="Đưa cảnh lên"><ChevronUp size={16} /></button>
-                        <button type="button" onClick={() => moveFrame(index, 1)} disabled={index === draft.content.storyboard.length - 1} className="mb-0.5 rounded-lg p-2 disabled:opacity-20" aria-label="Đưa cảnh xuống"><ChevronDown size={16} /></button>
-                        <button type="button" onClick={() => changeContent({ storyboard: draft.content.storyboard.filter((item) => item.id !== frame.id) })} className="mb-0.5 rounded-lg p-2 text-[#A15B55]" aria-label="Xóa cảnh"><Trash2 size={16} /></button>
-                      </div>
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label className="text-[11px] font-bold">Hình ảnh / hành động<textarea className={inputClass} rows={3} value={frame.visual} onChange={(event) => updateFrame(frame.id, { visual: event.target.value })} /></label>
-                        <label className="text-[11px] font-bold">Lời thoại<textarea className={inputClass} rows={3} value={frame.dialogue} onChange={(event) => updateFrame(frame.id, { dialogue: event.target.value })} /></label>
-                        <label className="text-[11px] font-bold">Mục đích của cảnh<textarea className={inputClass} rows={2} value={frame.visualPurpose} onChange={(event) => updateFrame(frame.id, { visualPurpose: event.target.value })} placeholder="Cảnh này giúp người xem hiểu hoặc cảm thấy gì?" /></label>
-                        <label className="text-[11px] font-bold">Cảnh phụ / B-roll<textarea className={inputClass} rows={2} value={frame.broll} onChange={(event) => updateFrame(frame.id, { broll: event.target.value })} placeholder="Chi tiết tay, đồ vật, màn hình…" /></label>
-                        <label className="text-[11px] font-bold">Nhịp cảm xúc<input className={inputClass} value={frame.emotionalBeat} onChange={(event) => updateFrame(frame.id, { emotionalBeat: event.target.value })} placeholder="Tò mò, đồng cảm, bất ngờ…" /></label>
-                        <label className="text-[11px] font-bold">Chuyển cảnh<input className={inputClass} value={frame.transition} onChange={(event) => updateFrame(frame.id, { transition: event.target.value })} placeholder="Cắt thẳng, đổi góc, nối bằng hành động…" /></label>
-                        <label className="text-[11px] font-bold sm:col-span-2">Vai trò giữ chân<input className={inputClass} value={frame.retentionRole} onChange={(event) => updateFrame(frame.id, { retentionRole: event.target.value })} placeholder="Mở câu hỏi, đổi nhịp, hé lộ kết quả…" /></label>
-                        <label className="text-[11px] font-bold">Chỉ dẫn quay<textarea className={inputClass} rows={2} value={frame.direction} onChange={(event) => updateFrame(frame.id, { direction: event.target.value })} /></label>
-                        <label className="text-[11px] font-bold">Thời lượng (giây)<input type="number" min={0} max={600} className={inputClass} value={frame.durationSeconds} onChange={(event) => updateFrame(frame.id, { durationSeconds: Math.max(0, Number(event.target.value)) })} /></label>
-                      </div>
-                    </div>
-                  </details>
-                ))}
-                {!draft.content.storyboard.length && <p className="rounded-xl border border-dashed border-[#D8E1D3] p-5 text-center text-xs text-[#879487]">Chưa có cảnh. Thêm thủ công hoặc nhờ Emsen.</p>}
-              </div>
-            </div>
-          </details>
-          ) : null}
         </div>
 
-        <aside className="space-y-3 xl:sticky xl:top-24">
+        {activeTab === "dialogue" && <aside className="space-y-3 xl:sticky xl:top-24">
           {draft.planReference && <section className="rounded-[20px] border border-[#D8E9D2] bg-[#F4FAF0] p-4"><p className="flex items-center gap-2 text-xs font-bold text-[#3F8240]"><FolderKanban size={15} /> {draft.planReference.planName}</p><p className="mt-1 line-clamp-2 text-[11px] leading-5 text-[#748A74]">Nội dung nguồn: {draft.planReference.planTitle}</p></section>}
           <details className="group rounded-[22px] border border-[#DDEBD6] bg-white">
             <summary className="flex cursor-pointer list-none items-center gap-3 p-4">
@@ -879,7 +820,7 @@ export function ScriptEditor({
             <div className="min-w-0 text-xs text-[#627862]"><p className="font-bold text-[#3F8240]">Cần chỉnh câu nào?</p><p className="mt-0.5">Bấm “Nhờ Emsen” ngay tại phần đó.</p></div>
           </section>
           <p className="flex items-center justify-center gap-2 text-[11px] text-[#879487]"><Clock3 size={13} /> Cập nhật {new Date(draft.updatedAt).toLocaleString("vi-VN")}</p>
-        </aside>
+        </aside>}
       </div>
     </section>
   );

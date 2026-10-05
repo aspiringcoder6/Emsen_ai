@@ -12,7 +12,7 @@ apps/
   worker/     Điểm vào cho queue, transcription và render
 packages/
   contracts/  Kiểu dữ liệu dùng chung giữa các ứng dụng
-  ai-provider/ Adapter AI, hiện hỗ trợ Google Gemini
+  ai-provider/ Adapter text Google Gemini và tạo ảnh Cloudflare Workers AI
 docs/         Ghi chú kiến trúc và ranh giới MVP
 compose.yaml  PostgreSQL, Redis và MinIO cho local development
 ```
@@ -73,8 +73,15 @@ duyệt yêu cầu domain HTTPS (Render đã cung cấp HTTPS).
 
 ## Kiểm tra trước khi commit
 
+Storyboard trực quan được chia thành các slice tại [docs/STORYBOARD_SLICES.md](docs/STORYBOARD_SLICES.md).
+Slice 1 bổ sung tab Storyboard trong Kịch bản, ảnh minh họa tải lên riêng tư và
+lớp chữ chỉnh font/màu/vị trí; cần PostgreSQL và kho media hiện có để lưu ảnh.
+Slice 2 thêm tạo ảnh theo cảnh qua Cloudflare Workers AI Free, hàng đợi và chọn
+phương án ảnh. Cần Account ID/API Token riêng, cấu hình ở cả API và worker;
+xem [docs/STORYBOARD_IMAGE_SETUP.md](docs/STORYBOARD_IMAGE_SETUP.md).
+
 ```text
 npm run check
 ```
 
-Lệnh trên kiểm tra type, lint và build toàn bộ workspace.
+Lệnh trên kiểm tra type và build toàn bộ workspace.

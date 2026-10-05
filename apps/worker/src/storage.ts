@@ -11,7 +11,7 @@ function encode(value: string) {
   );
 }
 
-function hash(value: string | Buffer) {
+function hash(value: string | Uint8Array) {
   return createHash("sha256").update(value).digest("hex");
 }
 
@@ -71,18 +71,22 @@ export async function deleteMediaObject(objectKey: string) {
 }
 
 export async function uploadMediaObject(objectKey: string, sourcePath: string, mimeType: string) {
+  await uploadMediaBytes(objectKey, await readFile(sourcePath), mimeType);
+}
+
+export async function uploadMediaBytes(objectKey: string, data: Uint8Array, mimeType: string, timeoutMs?: number) {
   if (!workerConfig.storage.endpoint || !workerConfig.storage.accessKey || !workerConfig.storage.secretKey || !workerConfig.storage.bucket) {
     throw new Error("Kho lưu trữ video chưa được cấu hình cho worker.");
   }
-  const data = await readFile(sourcePath);
   const url = objectUrl(objectKey);
   const response = await fetch(url, {
-    body: data,
+    body: new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength),
     headers: {
       ...authorization(url, "PUT", hash(data)),
       "Content-Type": mimeType,
     },
     method: "PUT",
+    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
   });
   if (!response.ok) {
     throw new Error(`Không lưu được bản preview vào kho video (${response.status}).`);

@@ -34,6 +34,9 @@ import {
   textSuggestionResponseSchema,
 } from "./script.schema.js";
 import { hydrateScriptPlanReference, planSourceSnapshot } from "./scriptPlanSync.js";
+import { assertStoryboardAssetOwnership, getStoryboardObjectKeys, removeStoryboardObjects } from "./storyboardAssets.service.js";
+import { parseStoryboardOverlay } from "./storyboard.schema.js";
+import { mergeStoryboardSuggestions } from "./storyboardSuggestions.js";
 import {
   buildFlexibleTimelineGuide,
   normalizeScriptTimeline,
@@ -106,6 +109,9 @@ function normalizeScriptRow(row: ScriptRow): ScriptDocumentDto {
             emotionalBeat: frame.emotionalBeat ?? "",
             transition: frame.transition ?? "",
             retentionRole: frame.retentionRole ?? "",
+            illustrationAssetId: frame.illustrationAssetId ?? null,
+            onScreenText: parseStoryboardOverlay(frame.onScreenText),
+            locked: frame.locked ?? false,
           }))
         : [],
     },
@@ -615,6 +621,7 @@ export async function updateScript(userId: string, scriptId: string, input: Upda
   if (current.revision !== input.revision) {
     throw new HttpError(409, "SCRIPT_CONFLICT", "Kịch bản đã thay đổi ở cửa sổ khác. Hãy tải lại bản mới nhất.");
   }
+  await assertStoryboardAssetOwnership(userId, scriptId, input.content.storyboard);
   const updated: ScriptDocumentDto = {
     ...current,
     ...input,
@@ -634,11 +641,13 @@ export async function updateScript(userId: string, scriptId: string, input: Upda
 }
 
 export async function deleteScript(userId: string, scriptId: string) {
+  const objectKeys = await getStoryboardObjectKeys(userId, scriptId);
   const result = await database.query(
     "DELETE FROM script_documents WHERE id = $1 AND user_id = $2",
     [scriptId, userId],
   );
   if (result.rowCount !== 1) throw new HttpError(404, "SCRIPT_NOT_FOUND", "Không tìm thấy kịch bản này.");
+  await removeStoryboardObjects(objectKeys);
 }
 
 const assisting = new Set<string>();
@@ -670,11 +679,12 @@ export async function assistScript(
       const timelineGuide = buildFlexibleTimelineGuide(targetDurationSeconds);
       const wordBudget = scriptWordBudget(targetDurationSeconds);
       if (input.section === "storyboard") {
+        await assertStoryboardAssetOwnership(userId, scriptId, input.draft.content.storyboard);
         const result = await provider.generateStructured<unknown>({
           schemaName: "script_storyboard_assist_v2",
           responseSchema: storyboardSuggestionResponseSchema,
           systemPrompt: `Bạn là trợ lý visual storytelling của Emsen. Chỉnh storyboard text theo yêu cầu và trả về 2–10 cảnh quay được bằng nguồn lực creator có.
-Mỗi cảnh phải có mục đích thị giác, hình ảnh/hành động, B-roll, lời thoại cần thiết, nhịp cảm xúc, chuyển cảnh, vai trò giữ chân trong chỉ dẫn quay và thời lượng. Ghi rõ cảnh dùng lời nói trực tiếp hay voice-over. Không chỉ cắt nhỏ nguyên văn kịch bản. Tổng durationSeconds phải bằng đúng thời lượng mục tiêu và thứ tự cảnh phải bám timeline lời thoại. Giữ đúng creative concept, nội dung, giọng điệu và ranh giới thương hiệu. Không sinh ảnh và không bịa bối cảnh creator chưa có.`,
+Mỗi cảnh phải có mục đích thị giác, hình ảnh/hành động, B-roll, lời thoại cần thiết, nhịp cảm xúc, chuyển cảnh, vai trò giữ chân trong chỉ dẫn quay và thời lượng. Ghi rõ cảnh dùng lời nói trực tiếp hay voice-over. Không chỉ cắt nhỏ nguyên văn kịch bản. Tổng durationSeconds phải bằng đúng thời lượng mục tiêu và thứ tự cảnh phải bám timeline lời thoại. Giữ đúng creative concept, nội dung, giọng điệu và ranh giới thương hiệu. Giữ ID của cảnh hiện có. Không thay hoặc bỏ cảnh locked, cảnh có ảnh minh họa hoặc chữ trên màn hình. Cảnh mới dùng ID mới. Không sinh ảnh và không bịa bối cảnh creator chưa có.`,
           userPrompt: JSON.stringify({
             instruction: input.instruction,
             targetDurationSeconds,
@@ -693,9 +703,13 @@ Mỗi cảnh phải có mục đích thị giác, hình ảnh/hành động, B-r
         });
         const frames = scriptObject(result.output).frames;
         const storyboard = parseStoryboard(
-          Array.isArray(frames) ? frames.map((frame) => ({ ...scriptObject(frame), id: randomUUID() })) : frames,
+          Array.isArray(frames) ? frames.map((frame, index) => {
+            const row = scriptObject(frame);
+            const current = input.draft.content.storyboard.find((scene) => scene.id === row.id);
+            return { ...row, id: current?.id ?? (row.id === undefined ? input.draft.content.storyboard[index]?.id : undefined) ?? randomUUID() };
+          }) : frames,
         );
-        return { section: input.section, patch: { storyboard }, model: result.model };
+        return { section: input.section, patch: { storyboard: mergeStoryboardSuggestions(input.draft.content.storyboard, storyboard) }, model: result.model };
       }
       if (input.section === "cta") {
         const result = await provider.generateStructured<unknown>({

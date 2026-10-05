@@ -3,6 +3,10 @@ import { requireAuth } from "../auth/session.js";
 import { HttpError } from "../../shared/http.js";
 import { parseCreateScript, parseScriptAssist, parseScriptBrainstorm, parseUpdateScript } from "./script.schema.js";
 import { assistScript, brainstormScript, createScript, deleteScript, getScript, getScriptWorkspace, updateScript } from "./script.service.js";
+import { parseStoryboardUpload } from "./storyboard.schema.js";
+import { getStoryboardAsset, uploadStoryboardAsset } from "./storyboardAssets.service.js";
+import { parseGenerateStoryboardImage } from "./storyboardImages.schema.js";
+import { getStoryboardImageWorkspace, queueStoryboardImage } from "./storyboardImages.service.js";
 
 export const scriptRouter = Router();
 scriptRouter.use(requireAuth);
@@ -28,6 +32,24 @@ scriptRouter.post("/brainstorm", async (request, response) => {
 
 scriptRouter.get("/:scriptId", async (request, response) => {
   response.json(await getScript(request.auth!.userId, scriptId(request.params.scriptId)));
+});
+
+scriptRouter.post("/:scriptId/storyboard-assets", async (request, response) => {
+  response.status(201).json(await uploadStoryboardAsset(request.auth!.userId, scriptId(request.params.scriptId), parseStoryboardUpload(request.body)));
+});
+
+scriptRouter.get("/:scriptId/storyboard-assets/:assetId", async (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json(await getStoryboardAsset(request.auth!.userId, scriptId(request.params.scriptId), scriptId(request.params.assetId)));
+});
+
+scriptRouter.get("/:scriptId/storyboard-images", async (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.json(await getStoryboardImageWorkspace(request.auth!.userId, scriptId(request.params.scriptId)));
+});
+
+scriptRouter.post("/:scriptId/storyboard-images", async (request, response) => {
+  response.status(202).json(await queueStoryboardImage(request.auth!.userId, scriptId(request.params.scriptId), parseGenerateStoryboardImage(request.body)));
 });
 
 scriptRouter.put("/:scriptId", async (request, response) => {

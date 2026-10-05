@@ -14,6 +14,7 @@ import type {
   UpdateScriptRequestDto,
 } from "@creator-flow/contracts";
 import { HttpError } from "../../shared/http.js";
+import { parseStoryboardOverlay, storyboardAssetId } from "./storyboard.schema.js";
 
 const statuses: ScriptStatus[] = ["draft", "in-progress", "ready", "completed", "archived"];
 const assistSections: ScriptAssistSection[] = ["hook", "body", "cta", "storyboard"];
@@ -109,14 +110,19 @@ export function parseStoryboard(value: unknown): ScriptStoryboardFrameDto[] {
   if (!Array.isArray(value) || value.length > 16) {
     return invalid("Storyboard có tối đa 16 keyframe.");
   }
+  const ids = new Set<string>();
   return value.map((entry, index) => {
     const row = scriptObject(entry);
+    const id = text(row.id, "Mã keyframe", 100, true);
+    if (ids.has(id)) return invalid("Mã cảnh storyboard không được trùng nhau.");
+    ids.add(id);
+    if (row.locked !== undefined && typeof row.locked !== "boolean") return invalid("Trạng thái khóa cảnh không hợp lệ.");
     const durationSeconds = Number(row.durationSeconds);
     if (!Number.isInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > 600) {
       return invalid(`Thời lượng keyframe ${index + 1} không hợp lệ.`);
     }
     return {
-      id: text(row.id, "Mã keyframe", 100, true),
+      id,
       title: text(row.title, "Tên keyframe", 120, true),
       visual: text(row.visual, "Mô tả hình ảnh", 2000),
       visualPurpose: optionalText(row.visualPurpose, "Mục đích hình ảnh", 1000),
@@ -127,6 +133,9 @@ export function parseStoryboard(value: unknown): ScriptStoryboardFrameDto[] {
       retentionRole: optionalText(row.retentionRole, "Vai trò giữ chân", 1000),
       direction: text(row.direction, "Chỉ dẫn", 2000),
       durationSeconds,
+      illustrationAssetId: storyboardAssetId(row.illustrationAssetId),
+      onScreenText: parseStoryboardOverlay(row.onScreenText),
+      locked: row.locked ?? false,
     };
   });
 }
@@ -309,10 +318,11 @@ export function parseScriptAssist(value: unknown): ScriptAssistRequestDto {
 const generatedStoryboardFramesSchema = {
   type: "array",
   minItems: 2,
-  maxItems: 10,
+  maxItems: 16,
   items: {
     type: "object",
     properties: {
+      id: { type: "string", description: "Giữ ID của cảnh hiện có; cảnh mới dùng ID mới." },
       title: { type: "string" },
       visual: { type: "string" },
       visualPurpose: { type: "string" },
@@ -324,7 +334,7 @@ const generatedStoryboardFramesSchema = {
       direction: { type: "string" },
       durationSeconds: { type: "integer", minimum: 0, maximum: 600 },
     },
-    required: ["title", "visual", "visualPurpose", "broll", "dialogue", "emotionalBeat", "transition", "retentionRole", "direction", "durationSeconds"],
+    required: ["id", "title", "visual", "visualPurpose", "broll", "dialogue", "emotionalBeat", "transition", "retentionRole", "direction", "durationSeconds"],
   },
 };
 

@@ -14,6 +14,8 @@
     "test:creator-dna": "node --import tsx --test test/creatorDna.test.ts",
     "test:phone-number": "node --import tsx --test test/phoneNumber.test.ts",
     "test:scripts": "node --import tsx --test test/script.test.ts",
+    "test:storyboard": "node --import tsx --test test/storyboard.test.ts test/storyboardAssets.test.ts test/imageProvider.test.ts test/storyboardImages.test.ts",
+    "test:storyboard-integration": "node --import tsx --test --test-concurrency=1 test/storyboard.integration.test.ts test/storyboardImages.integration.test.ts",
     "test:video": "node --import tsx --test test/video.test.ts",
     "test:video-integration": "node --import tsx --test test/video.integration.test.ts",
     "test:agent-skills": "node --import tsx --test test/agentSkills.test.ts",

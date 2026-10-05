@@ -5,6 +5,8 @@ import {
   contentPlanSchemaSql,
 } from "./contentPlanSchema.js";
 import { scriptSchemaSql } from "./scriptSchema.js";
+import { storyboardSchemaSql } from "./storyboardSchema.js";
+import { storyboardImageSchemaSql } from "./storyboardImageSchema.js";
 import { agentSkillSchemaSql } from "./agentSkillSchema.js";
 import { mediaSchemaSql } from "./mediaSchema.js";
 import { videoTranscriptSchemaSql } from "./videoTranscriptSchema.js";
@@ -37,6 +39,8 @@ const migrations = [
   { sql: videoTranscriptSchemaSql, version: 14 },
   { sql: videoCutSchemaSql, version: 15 },
   { sql: videoPreviewSchemaSql, version: 16 },
+  { sql: storyboardSchemaSql, version: 17 },
+  { sql: storyboardImageSchemaSql, version: 18 },
 ];
 
 export async function migrateDatabase() {

@@ -7,6 +7,11 @@ import type {
   ScriptDocumentDto,
   ScriptWorkspaceDto,
   UpdateScriptRequestDto,
+  StoryboardAssetDto,
+  UploadStoryboardAssetRequestDto,
+  GenerateStoryboardImageRequestDto,
+  StoryboardImageJobDto,
+  StoryboardImageWorkspaceDto,
 } from "@creator-flow/contracts";
 import { apiRequest } from "../../lib/apiClient";
 
@@ -21,3 +26,13 @@ export const deleteScript = (id: string) =>
   apiRequest<void>(`/scripts/${id}`, { method: "DELETE" });
 export const assistScript = (id: string, body: ScriptAssistRequestDto) =>
   apiRequest<ScriptAssistResponseDto>(`/scripts/${id}/assist`, { method: "POST", body });
+
+export const uploadStoryboardAsset = (scriptId: string, body: UploadStoryboardAssetRequestDto) =>
+  apiRequest<StoryboardAssetDto>(`/scripts/${scriptId}/storyboard-assets`, { method: "POST", body });
+export const getStoryboardAsset = (scriptId: string, assetId: string) =>
+  apiRequest<StoryboardAssetDto>(`/scripts/${scriptId}/storyboard-assets/${assetId}`);
+
+export const getStoryboardImageWorkspace = (scriptId: string) =>
+  apiRequest<StoryboardImageWorkspaceDto>(`/scripts/${scriptId}/storyboard-images`);
+export const generateStoryboardImage = (scriptId: string, body: GenerateStoryboardImageRequestDto) =>
+  apiRequest<StoryboardImageJobDto>(`/scripts/${scriptId}/storyboard-images`, { method: "POST", body });

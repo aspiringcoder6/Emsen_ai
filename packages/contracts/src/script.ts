@@ -30,6 +30,62 @@ export type ScriptCreativeStrategyDto = {
   creatorExperience: string;
 };
 
+export type StoryboardTextOverlayDto = {
+  text: string;
+  font: "sans" | "serif" | "mono";
+  color: string;
+  backgroundColor: string;
+  position: "top" | "center" | "bottom";
+  size: "small" | "medium" | "large";
+};
+
+export type StoryboardAssetDto = {
+  id: string;
+  fileName: string;
+  imageUrl: string;
+  expiresAt: string;
+};
+
+export type UploadStoryboardAssetRequestDto = {
+  fileName: string;
+  mimeType: string;
+  dataBase64: string;
+};
+
+export type StoryboardImageStyle = "sketch" | "cinematic" | "illustration";
+
+export type GenerateStoryboardImageRequestDto = {
+  requestId: string;
+  scriptRevision: number;
+  scene: Pick<ScriptStoryboardFrameDto, "id" | "title" | "visual" | "direction" | "locked">;
+  aspectRatio: ScriptSettingsDto["aspectRatio"];
+  style: StoryboardImageStyle;
+  prompt: string;
+};
+
+export type StoryboardImageJobDto = {
+  id: string;
+  sceneId: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  progress: number;
+  provider: string;
+  model: string;
+  source: GenerateStoryboardImageRequestDto;
+  assetId: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+};
+
+export type StoryboardImageWorkspaceDto = {
+  configured: boolean;
+  configurationMessage: string | null;
+  provider: string;
+  model: string;
+  capabilities: { exactAspectRatio: boolean; referenceImages: boolean };
+  usage: { usedToday: number; dailyLimit: number; workspaceUsedToday: number; workspaceDailyLimit: number; resetsAt: string };
+  jobs: StoryboardImageJobDto[];
+};
+
 export type ScriptStoryboardFrameDto = {
   id: string;
   title: string;
@@ -42,6 +98,11 @@ export type ScriptStoryboardFrameDto = {
   retentionRole: string;
   direction: string;
   durationSeconds: number;
+  /** Optional for documents created before visual storyboards. */
+  illustrationAssetId?: string | null;
+  onScreenText?: StoryboardTextOverlayDto;
+  /** Protects the scene from AI rewrites; manual edits are still allowed. */
+  locked?: boolean;
 };
 
 export type ScriptContentDto = {

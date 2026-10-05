@@ -1,0 +1,70 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { test } from "node:test";
+import { registerImageProvider } from "@creator-flow/ai-provider";
+import { config } from "../src/config.js";
+import { migrateDatabase } from "../src/database/migrate.js";
+import { database } from "../src/database/pool.js";
+import { createScript, deleteScript, getScript, updateScript } from "../src/modules/scripts/script.service.js";
+import { parseStoryboard, parseUpdateScript } from "../src/modules/scripts/script.schema.js";
+import { parseGenerateStoryboardImage } from "../src/modules/scripts/storyboardImages.schema.js";
+import { getStoryboardImageWorkspace, queueStoryboardImage } from "../src/modules/scripts/storyboardImages.service.js";
+import { getStoryboardAsset } from "../src/modules/scripts/storyboardAssets.service.js";
+import { workerConfig } from "../../worker/src/config.js";
+import { workerDatabase } from "../../worker/src/database.js";
+import { processStoryboardImage } from "../../worker/src/storyboardImage.js";
+
+test("real PostgreSQL/MinIO queue persists generated candidates, enforces ownership and preserves chosen text", async () => {
+  const userId = randomUUID(), otherUser = randomUUID();
+  let scriptId: string | null = null;
+  let imageCalls = 0;
+  const previousApi = { ...config.imageGeneration }, previousWorker = { ...workerConfig.imageGeneration };
+  const provider = "local-integration-images", model = "fixture-png";
+  registerImageProvider(provider, () => ({ configured: true, provider, model, capabilities: { exactAspectRatio: false, referenceImages: false }, generateImage: async () => { imageCalls++; return { provider, model, bytes: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZc0AAAAASUVORK5CYII=", "base64"), mimeType: "image/png" }; } }));
+  Object.assign(config.imageGeneration, { provider, model });
+  Object.assign(workerConfig.imageGeneration, { provider, model });
+  try {
+    await migrateDatabase();
+    for (const id of [userId, otherUser]) await database.query("INSERT INTO users (id, email, display_name, password_hash, terms_accepted_at) VALUES ($1,$2,'Image integration','unused-test-hash',NOW())", [id, `image-${id}@example.invalid`]);
+    const created = await createScript(userId, { mode: "manual", title: "Image queue test", brief: "", scheduledFor: null, platform: "TikTok", format: "Video ngắn", targetDurationSeconds: 30 });
+    scriptId = created.id;
+    const frame = parseStoryboard([{ id: "scene-1", title: "Mở sổ", visual: "Mở sổ tay trên bàn", direction: "Cận cảnh", dialogue: "Lời thoại vẫn còn", durationSeconds: 30, onScreenText: { text: "Một việc nhỏ", font: "sans", size: "medium", position: "bottom", color: "#FFFFFF", backgroundColor: "#284D31" } }])[0]!;
+    const script = await updateScript(userId, scriptId, parseUpdateScript({ ...created, content: { ...created.content, storyboard: [frame] } }));
+    const input = parseGenerateStoryboardImage({ requestId: randomUUID(), scriptRevision: script.revision, scene: frame, aspectRatio: "9:16", style: "sketch", prompt: "" });
+    const first = await queueStoryboardImage(userId, scriptId, input);
+    const replay = await queueStoryboardImage(userId, scriptId, input);
+    assert.equal(first.id, replay.id);
+    const parallel = await Promise.allSettled([queueStoryboardImage(userId, scriptId, { ...input, requestId: randomUUID() }), queueStoryboardImage(userId, scriptId, { ...input, requestId: randomUUID() })]);
+    assert.ok(parallel.every((result) => result.status === "rejected"));
+    await assert.rejects(() => getStoryboardImageWorkspace(otherUser, scriptId!), /Không tìm thấy/);
+    // Claim only our test job, without touching unrelated queued jobs.
+    await workerDatabase.query("UPDATE storyboard_image_jobs SET status = 'running', progress = 10, started_at = NOW() WHERE id = $1", [first.id]);
+    await processStoryboardImage({ id: first.id, script_id: scriptId, user_id: userId, provider, model, input });
+    const status = await getStoryboardImageWorkspace(userId, scriptId);
+    const completed = status.jobs.find((job) => job.id === first.id)!;
+    assert.equal(completed.status, "succeeded"); assert.equal(imageCalls, 1); assert.ok(completed.assetId);
+    const unchanged = await getScript(userId, scriptId);
+    assert.equal(unchanged.revision, script.revision);
+    assert.equal(unchanged.content.storyboard[0]!.illustrationAssetId, null);
+    const asset = await getStoryboardAsset(userId, scriptId, completed.assetId!);
+    assert.equal((await fetch(asset.imageUrl)).status, 200);
+    assert.equal((await fetch(asset.imageUrl.split("?")[0])).status, 403);
+    await assert.rejects(() => getStoryboardAsset(otherUser, scriptId!, completed.assetId!), /Không tìm thấy/);
+    const selected = await updateScript(userId, scriptId, parseUpdateScript({ ...unchanged, content: { ...unchanged.content, storyboard: [{ ...frame, illustrationAssetId: asset.id }] } }));
+    const reopened = await getScript(userId, scriptId);
+    assert.deepEqual(reopened.content.storyboard, selected.content.storyboard);
+    assert.equal(reopened.content.storyboard[0]!.onScreenText!.text, "Một việc nhỏ");
+    assert.equal(reopened.content.storyboard[0]!.dialogue, "Lời thoại vẫn còn");
+    const metadata = await database.query<{ metadata: Record<string, unknown> }>("SELECT metadata FROM storyboard_assets WHERE id = $1", [asset.id]);
+    assert.equal(metadata.rows[0]!.metadata.model, model);
+    await deleteScript(userId, scriptId); scriptId = null;
+    assert.equal((await fetch(asset.imageUrl)).status, 404);
+    const usage = await database.query("SELECT id FROM storyboard_image_usage WHERE user_id = $1", [userId]);
+    assert.equal(usage.rowCount, 1);
+  } finally {
+    if (scriptId) await deleteScript(userId, scriptId).catch(() => undefined);
+    await database.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [[userId, otherUser]]).catch(() => undefined);
+    Object.assign(config.imageGeneration, previousApi); Object.assign(workerConfig.imageGeneration, previousWorker);
+    await Promise.all([database.end(), workerDatabase.end()]);
+  }
+});

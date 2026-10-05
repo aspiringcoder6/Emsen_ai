@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { readImageGenerationSettings } from "@creator-flow/ai-provider";
 
 for (const path of [resolve(process.cwd(), ".env"), resolve(process.cwd(), "../../.env")]) {
   try {
@@ -28,6 +29,7 @@ export const workerConfig = {
     timeoutMs: positiveNumber(process.env.GEMINI_VIDEO_TIMEOUT_MS, 10 * 60_000, 60_000),
   },
   isProduction: nodeEnv === "production",
+  imageGeneration: readImageGenerationSettings(process.env),
   pollIntervalMs: positiveNumber(process.env.MEDIA_WORKER_POLL_MS, 2_000, 500),
   storage: {
     accessKey: process.env.MEDIA_STORAGE_ACCESS_KEY || process.env.MINIO_ROOT_USER || (nodeEnv === "production" ? "" : "creatorflow"),

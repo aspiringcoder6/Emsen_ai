@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import dotenv from "dotenv";
+import { readImageGenerationSettings } from "@creator-flow/ai-provider";
 
 for (const path of [resolve(process.cwd(), ".env"), resolve(process.cwd(), "../../.env")]) {
   dotenv.config({ path, quiet: true });
@@ -37,6 +38,7 @@ export const config = {
     timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS ?? 45_000),
   },
   isProduction: nodeEnv === "production",
+  imageGeneration: readImageGenerationSettings(process.env),
   mediaStorage: {
     accessKey: mediaStorageAccessKey,
     autoCreateBucket: (process.env.MEDIA_STORAGE_AUTO_CREATE_BUCKET ?? (nodeEnv === "production" ? "false" : "true")) === "true",

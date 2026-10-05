@@ -1,3 +1,5 @@
+export * from "./image.js";
+
 export type JsonSchema = Record<string, unknown>;
 
 export type AiConversationMessage = {
