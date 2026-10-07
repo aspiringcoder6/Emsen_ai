@@ -13,6 +13,7 @@ import { getStoryboardAsset } from "../src/modules/scripts/storyboardAssets.serv
 import { workerConfig } from "../../worker/src/config.js";
 import { workerDatabase } from "../../worker/src/database.js";
 import { processStoryboardImage } from "../../worker/src/storyboardImage.js";
+import { inspectStoryboardWorker } from "../../worker/src/storyboardDiagnostics.js";
 
 test("real PostgreSQL/MinIO queue persists generated candidates, enforces ownership and preserves chosen text", async () => {
   const userId = randomUUID(), otherUser = randomUUID();
@@ -31,15 +32,30 @@ test("real PostgreSQL/MinIO queue persists generated candidates, enforces owners
     const frame = parseStoryboard([{ id: "scene-1", title: "Mở sổ", visual: "Mở sổ tay trên bàn", direction: "Cận cảnh", dialogue: "Lời thoại vẫn còn", durationSeconds: 30, onScreenText: { text: "Một việc nhỏ", font: "sans", size: "medium", position: "bottom", color: "#FFFFFF", backgroundColor: "#284D31" } }])[0]!;
     const script = await updateScript(userId, scriptId, parseUpdateScript({ ...created, content: { ...created.content, storyboard: [frame] } }));
     const input = parseGenerateStoryboardImage({ requestId: randomUUID(), scriptRevision: script.revision, scene: frame, aspectRatio: "9:16", style: "sketch", prompt: "" });
-    const first = await queueStoryboardImage(userId, scriptId, input);
-    const replay = await queueStoryboardImage(userId, scriptId, input);
+    const abandoned = await queueStoryboardImage(userId, scriptId, input);
+    await database.query("UPDATE storyboard_image_jobs SET created_at = NOW() - INTERVAL '31 minutes' WHERE id = $1", [abandoned.id]);
+    const expired = await getStoryboardImageWorkspace(userId, scriptId);
+    assert.equal(expired.jobs.find(job => job.id === abandoned.id)!.status, "failed");
+    assert.equal(expired.usage.usedToday, 1); assert.equal(imageCalls, 0);
+    const expiredReplay = await queueStoryboardImage(userId, scriptId, input);
+    assert.equal(expiredReplay.id, abandoned.id); assert.equal(expiredReplay.status, "failed");
+    const interrupted = await queueStoryboardImage(userId, scriptId, { ...input, requestId: randomUUID() });
+    await database.query("UPDATE storyboard_image_jobs SET status = 'running', updated_at = NOW() - INTERVAL '6 minutes' WHERE id = $1", [interrupted.id]);
+    const recovered = await getStoryboardImageWorkspace(userId, scriptId);
+    assert.equal(recovered.jobs.find(job => job.id === interrupted.id)!.status, "failed");
+    assert.equal(recovered.usage.usedToday, 2); assert.equal(imageCalls, 0);
+    const freshInput = { ...input, requestId: randomUUID() };
+    const first = await queueStoryboardImage(userId, scriptId, freshInput);
+    const replay = await queueStoryboardImage(userId, scriptId, freshInput);
     assert.equal(first.id, replay.id);
     const parallel = await Promise.allSettled([queueStoryboardImage(userId, scriptId, { ...input, requestId: randomUUID() }), queueStoryboardImage(userId, scriptId, { ...input, requestId: randomUUID() })]);
     assert.ok(parallel.every((result) => result.status === "rejected"));
     await assert.rejects(() => getStoryboardImageWorkspace(otherUser, scriptId!), /Không tìm thấy/);
+    const diagnostic = await inspectStoryboardWorker(workerDatabase, first.id);
+    assert.equal(diagnostic.ready, true); assert.equal(diagnostic.job!.id, first.id); assert.equal(diagnostic.job!.status, "queued");
     // Claim only our test job, without touching unrelated queued jobs.
     await workerDatabase.query("UPDATE storyboard_image_jobs SET status = 'running', progress = 10, started_at = NOW() WHERE id = $1", [first.id]);
-    await processStoryboardImage({ id: first.id, script_id: scriptId, user_id: userId, provider, model, input });
+    await processStoryboardImage({ id: first.id, script_id: scriptId, user_id: userId, provider, model, input: freshInput });
     const status = await getStoryboardImageWorkspace(userId, scriptId);
     const completed = status.jobs.find((job) => job.id === first.id)!;
     assert.equal(completed.status, "succeeded"); assert.equal(imageCalls, 1); assert.ok(completed.assetId);
@@ -60,7 +76,7 @@ test("real PostgreSQL/MinIO queue persists generated candidates, enforces owners
     await deleteScript(userId, scriptId); scriptId = null;
     assert.equal((await fetch(asset.imageUrl)).status, 404);
     const usage = await database.query("SELECT id FROM storyboard_image_usage WHERE user_id = $1", [userId]);
-    assert.equal(usage.rowCount, 1);
+    assert.equal(usage.rowCount, 3);
   } finally {
     if (scriptId) await deleteScript(userId, scriptId).catch(() => undefined);
     await database.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [[userId, otherUser]]).catch(() => undefined);

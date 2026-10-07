@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mock, test } from "node:test";
 import { workerConfig } from "../src/config.js";
 import { workerDatabase } from "../src/database.js";
-import { buildStoryboardImagePrompt, claimNextStoryboardImageJob, processStoryboardImage, recoverInterruptedStoryboardImages, type StoryboardImageJob } from "../src/storyboardImage.js";
+import { buildStoryboardImagePrompt, storyboardCreatorAction, claimNextStoryboardImageJob, processStoryboardImage, recoverInterruptedStoryboardImages, type StoryboardImageJob } from "../src/storyboardImage.js";
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZc0AAAAASUVORK5CYII=";
 function makeJob(): StoryboardImageJob {
@@ -17,6 +17,30 @@ test("image prompt is bounded, visual only and keeps rendered text in a separate
   assert.match(prompt, /Morning sunlight/);
   assert.match(prompt, /No text/);
   assert.match(prompt, /9:16/);
+  input.prompt = "long ".repeat(240);
+  input.scene.visual = "scene ".repeat(330);
+  input.scene.direction = "camera ".repeat(280);
+  assert.ok(buildStoryboardImagePrompt(input).length <= 2_048);
+});
+
+test("creator prompts focus on colored presenter actions, preserve B-roll and never turn a Hook label into an object", () => {
+  const input = { ...makeJob().input, style: "creator" as const };
+  input.scene = { ...input.scene, title: "Hook", visual: "Creator giơ bịch bỉm organic trước camera với biểu cảm bất ngờ" };
+  assert.equal(storyboardCreatorAction(input), "show-product");
+  const prompt = buildStoryboardImagePrompt(input);
+  assert.match(prompt, /Full-color/); assert.match(prompt, /foreground subject/);
+  assert.match(prompt, /baby diapers/); assert.match(prompt, /hands and product clearly visible/);
+  assert.doesNotMatch(prompt, /Hook|pencil|sketch|grayscale/);
+  assert.equal(buildStoryboardImagePrompt({ ...input, scene: { ...input.scene, title: "CTA" } }), prompt);
+  input.scene.visual = "Creator nhìn camera và nói trực tiếp";
+  assert.equal(storyboardCreatorAction(input), "talk-to-camera"); // 'camera' is not 'cầm'
+  input.scene.visual = "Hào hứng khui gói bỉm trên bàn";
+  assert.equal(storyboardCreatorAction(input), "unbox");
+  input.creatorAction = "b-roll";
+  const broll = buildStoryboardImagePrompt(input);
+  assert.match(broll, /intentional B-roll insert/); assert.doesNotMatch(broll, /foreground subject fills/);
+  input.creatorAction = "demonstrate";
+  assert.match(buildStoryboardImagePrompt(input), /hands actively performing/);
   input.prompt = "long ".repeat(240);
   input.scene.visual = "scene ".repeat(330);
   input.scene.direction = "camera ".repeat(280);

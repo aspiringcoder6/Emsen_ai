@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type {
   ScriptAssistSection,
   ScriptAssistResponseDto,
@@ -77,6 +77,7 @@ function AiPrompt({
   section,
   busy,
   enabled,
+  autoFocus = false,
   currentValue,
   onAsk,
   onApplyAlternative,
@@ -86,6 +87,7 @@ function AiPrompt({
   section: ScriptAssistSection;
   busy: boolean;
   enabled: boolean;
+  autoFocus?: boolean;
   currentValue?: string;
   onAsk: (
     prompt: string,
@@ -196,7 +198,7 @@ function AiPrompt({
   );
 
   return (
-    <aside className="mt-3 rounded-2xl border border-[#CFE3C8] bg-[#F4FAF0] p-3 sm:p-4">
+    <aside className={`${section === "storyboard" ? "" : "mt-3 "}rounded-2xl border border-[#CFE3C8] bg-[#F4FAF0] p-3 sm:p-4`}>
       <div className="flex items-center gap-3">
         <EmsenAvatar activity="idea" className="h-11 w-11 shrink-0" />
         <div className="min-w-0 flex-1">
@@ -247,6 +249,8 @@ function AiPrompt({
 
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
             <textarea
+              autoFocus={autoFocus}
+              aria-label="Yêu cầu gửi Emsen"
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               maxLength={3000}
@@ -274,7 +278,7 @@ function AiPrompt({
           ) : null}
         </div>
       ) : (
-        <button type="button" onClick={onSettings} className="mt-3 rounded-xl border border-[#C8DBC1] bg-white px-3 py-2 text-xs font-bold text-[#3F8240]">Kết nối AI để dùng</button>
+        <button type="button" autoFocus={autoFocus} onClick={onSettings} className="mt-3 rounded-xl border border-[#C8DBC1] bg-white px-3 py-2 text-xs font-bold text-[#3F8240]">Kết nối AI để dùng</button>
       )}
     </aside>
   );
@@ -590,6 +594,18 @@ export function ScriptEditor({
   const [storyboardRequested, setStoryboardRequested] = useState(draft.content.storyboard.length > 0);
   const [storyboardExplainerOpen, setStoryboardExplainerOpen] = useState(false);
   const [exportNotice, setExportNotice] = useState("");
+  const [toolbarHeight, setToolbarHeight] = useState(80);
+  const toolbarRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    const updateHeight = () => setToolbarHeight(Math.ceil(toolbar.getBoundingClientRect().height));
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (notice) setExportNotice("");
@@ -665,8 +681,8 @@ export function ScriptEditor({
   const preservedSyncLabels = planSync?.preservedFields.map((field) => scriptSyncFieldLabels[field]) ?? [];
 
   return (
-    <section className="mx-auto max-w-[1280px] space-y-4">
-      <header className="sticky top-0 z-20 rounded-[22px] border border-[#D9E8D4] bg-[rgba(255,254,249,0.96)] p-3 shadow-[0_12px_35px_rgba(55,85,57,0.1)] backdrop-blur-xl sm:p-4">
+    <section className="mx-auto max-w-[1280px] space-y-4" style={{ "--script-toolbar-offset": `${76 + toolbarHeight + 8}px` } as CSSProperties}>
+      <header ref={toolbarRef} className="sticky top-[76px] z-20 rounded-[22px] border border-[#D9E8D4] bg-[rgba(255,254,249,0.96)] p-3 shadow-[0_12px_35px_rgba(55,85,57,0.1)] backdrop-blur-xl sm:p-4">
         <div className="flex flex-wrap items-center gap-2.5">
           <button type="button" onClick={onBack} disabled={storyboardUploading} className="inline-flex items-center gap-2 rounded-xl border border-[#DDE8D6] bg-white px-3 py-2.5 text-xs font-bold"><ArrowLeft size={15} /> <span className="hidden sm:inline">Thư viện</span></button>
           <div className="min-w-[190px] flex-1">
@@ -774,13 +790,24 @@ export function ScriptEditor({
 
           </>}
           {activeTab === "storyboard" && <>
-            <StoryboardBoard key={draft.id} scriptId={draft.id} scriptRevision={draft.revision} frames={draft.content.storyboard} settings={draft.settings} disabled={saving || assisting === "storyboard"} assistantOpen={storyboardAssistantOpen} onToggleAssistant={() => setStoryboardAssistantOpen((value) => !value)} onChange={(storyboard) => changeContent({ storyboard })} onUploadBusy={setStoryboardUploading} />
-            {storyboardAssistantOpen && <AiPrompt section="storyboard" busy={assisting === "storyboard"} enabled={aiConfigured} onAsk={(prompt, referenceAssets) => onAssist("storyboard", prompt, referenceAssets)} onClose={() => setStoryboardAssistantOpen(false)} onSettings={onSettings} />}
+            <StoryboardBoard
+              key={draft.id}
+              scriptId={draft.id}
+              scriptRevision={draft.revision}
+              frames={draft.content.storyboard}
+              settings={draft.settings}
+              disabled={saving || assisting === "storyboard"}
+              assistantOpen={storyboardAssistantOpen}
+              assistant={<AiPrompt section="storyboard" autoFocus busy={assisting === "storyboard"} enabled={aiConfigured} onAsk={(prompt, referenceAssets) => onAssist("storyboard", prompt, referenceAssets)} onClose={() => setStoryboardAssistantOpen(false)} onSettings={onSettings} />}
+              onToggleAssistant={() => setStoryboardAssistantOpen((value) => !value)}
+              onChange={(storyboard) => changeContent({ storyboard })}
+              onUploadBusy={setStoryboardUploading}
+            />
           </>}
 
         </div>
 
-        {activeTab === "dialogue" && <aside className="space-y-3 xl:sticky xl:top-24">
+        {activeTab === "dialogue" && <aside className="space-y-3 xl:sticky xl:top-[var(--script-toolbar-offset)]">
           {draft.planReference && <section className="rounded-[20px] border border-[#D8E9D2] bg-[#F4FAF0] p-4"><p className="flex items-center gap-2 text-xs font-bold text-[#3F8240]"><FolderKanban size={15} /> {draft.planReference.planName}</p><p className="mt-1 line-clamp-2 text-[11px] leading-5 text-[#748A74]">Nội dung nguồn: {draft.planReference.planTitle}</p></section>}
           <details className="group rounded-[22px] border border-[#DDEBD6] bg-white">
             <summary className="flex cursor-pointer list-none items-center gap-3 p-4">

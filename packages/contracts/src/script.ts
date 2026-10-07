@@ -52,7 +52,9 @@ export type UploadStoryboardAssetRequestDto = {
   dataBase64: string;
 };
 
-export type StoryboardImageStyle = "sketch" | "cinematic" | "illustration";
+/** Sketch is retained for existing jobs; new creator scenes use full-color images. */
+export type StoryboardImageStyle = "creator" | "sketch" | "cinematic" | "illustration";
+export type StoryboardCreatorAction = "auto" | "talk-to-camera" | "show-product" | "unbox" | "demonstrate" | "b-roll";
 
 export type GenerateStoryboardImageRequestDto = {
   requestId: string;
@@ -60,6 +62,7 @@ export type GenerateStoryboardImageRequestDto = {
   scene: Pick<ScriptStoryboardFrameDto, "id" | "title" | "visual" | "direction" | "locked">;
   aspectRatio: ScriptSettingsDto["aspectRatio"];
   style: StoryboardImageStyle;
+  creatorAction?: StoryboardCreatorAction;
   prompt: string;
 };
 

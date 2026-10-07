@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { GenerateStoryboardImageRequestDto, ScriptSettingsDto, ScriptStoryboardFrameDto, StoryboardImageJobDto, StoryboardImageStyle, StoryboardImageWorkspaceDto } from "@creator-flow/contracts";
+import type { GenerateStoryboardImageRequestDto, ScriptSettingsDto, ScriptStoryboardFrameDto, StoryboardCreatorAction, StoryboardImageJobDto, StoryboardImageStyle, StoryboardImageWorkspaceDto } from "@creator-flow/contracts";
 import { Check, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 import { ApiError } from "../../../lib/apiClient";
 import { generateStoryboardImage, getStoryboardAsset, getStoryboardImageWorkspace } from "../scriptApi";
+
+const styleLabels: Record<StoryboardImageStyle, string> = { creator: "Creator ảnh màu", cinematic: "Điện ảnh", illustration: "Minh họa màu", sketch: "Phác thảo cũ" };
 
 function ImageCandidate({ scriptId, job, selected, disabled, outdated, onUse }: { scriptId: string; job: StoryboardImageJobDto; selected: boolean; disabled: boolean; outdated: boolean; onUse: () => void }) {
   const [url, setUrl] = useState("");
@@ -22,6 +24,7 @@ function ImageCandidate({ scriptId, job, selected, disabled, outdated, onUse }: 
   return <div className={`min-w-0 overflow-hidden rounded-xl border ${selected ? "border-[#72B65D] bg-[#EFF7E9]" : "border-[#E0E5DC] bg-white"}`}>
     {url && !failed ? <img src={url} className="aspect-square w-full object-contain" alt="Phương án ảnh minh họa" onError={() => setFailed(true)} /> : <div className="flex aspect-square items-center justify-center p-2 text-center text-[10px] text-[#748A74]">{failed ? <button type="button" onClick={() => setRefresh((value) => value + 1)}>Tải ảnh lại</button> : <LoaderCircle size={16} className="animate-spin" />}</div>}
     <div className="space-y-1 p-2">
+      <p className="text-[10px] leading-4 text-[#8C7387]">{styleLabels[job.source.style]}</p>
       {outdated && <p className="text-[10px] leading-4 text-[#A06F3F]">Theo mô tả trước</p>}
       <button type="button" disabled={disabled || selected || failed || !url} onClick={onUse} className="flex w-full items-center justify-center gap-1 rounded-lg bg-[#E8F1E1] px-1 py-2 text-[11px] font-bold text-[#416B43] disabled:opacity-50">{selected ? <><Check size={12} /> Đang dùng</> : "Dùng ảnh này"}</button>
     </div>
@@ -37,12 +40,13 @@ export function StoryboardImageGenerator({ scriptId, scriptRevision, frame, aspe
   const [loadingError, setLoadingError] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [style, setStyle] = useState<StoryboardImageStyle>("sketch");
+  const [style, setStyle] = useState<StoryboardImageStyle>("creator");
+  const [creatorAction, setCreatorAction] = useState<StoryboardCreatorAction>("auto");
   const [prompt, setPrompt] = useState("");
   const mounted = useRef(false);
   const lastAttempt = useRef<GenerateStoryboardImageRequestDto | null>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { setPrompt(""); setError(""); }, [frame.id]);
+  useEffect(() => { setPrompt(""); setError(""); setCreatorAction("auto"); }, [frame.id]);
   useEffect(() => {
     let disposed = false;
     let timer: number | undefined;
@@ -73,7 +77,7 @@ export function StoryboardImageGenerator({ scriptId, scriptRevision, frame, aspe
   async function generate() {
     if (!canGenerate) return;
     setError(""); setSubmitting(true);
-    const source = { scriptRevision, scene: { id: frame.id, title: frame.title.trim(), visual: frame.visual.trim(), direction: frame.direction.trim(), locked: frame.locked ?? false }, aspectRatio, style, prompt: prompt.trim() };
+    const source = { scriptRevision, scene: { id: frame.id, title: frame.title.trim(), visual: frame.visual.trim(), direction: frame.direction.trim(), locked: frame.locked ?? false }, aspectRatio, style, creatorAction, prompt: prompt.trim() };
     const previous = lastAttempt.current;
     // A network error might occur after acceptance. Reuse its request id for the same input.
     const request = previous && JSON.stringify({ ...previous, requestId: undefined }) === JSON.stringify(source)
@@ -93,9 +97,11 @@ export function StoryboardImageGenerator({ scriptId, scriptRevision, frame, aspe
 
   return <div className="space-y-3 rounded-xl border border-[#DECFDD] bg-[#FCF8FC] p-3" aria-label="Tạo ảnh minh họa bằng AI">
     <div className="flex items-center justify-between gap-2"><h4 className="flex items-center gap-1.5 text-xs font-bold text-[#72506B]"><Sparkles size={14} /> Minh họa bằng AI</h4><button type="button" aria-label="Tải lại trạng thái tạo ảnh" onClick={() => setRefresh((value) => value + 1)} className="rounded p-1 text-[#8C7387]"><RefreshCw size={13} /></button></div>
-    <label className="block text-xs font-bold">Phong cách ảnh<select disabled={disabled || submitting} value={style} onChange={(event) => setStyle(event.target.value as StoryboardImageStyle)} className="mt-1.5 w-full rounded-lg border border-[#E0D6DF] bg-white p-2 text-xs font-normal"><option value="sketch">Phác thảo storyboard</option><option value="cinematic">Điện ảnh</option><option value="illustration">Minh họa màu</option></select></label>
-    <label className="block text-xs font-bold">Mô tả thêm cho ảnh<textarea disabled={disabled || submitting} rows={2} maxLength={1_200} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Ánh sáng buổi sáng, góc nhìn từ trên…" className="mt-1.5 w-full rounded-lg border border-[#E0D6DF] bg-white p-2 text-xs font-normal leading-5" /></label>
-    <p className="text-[10px] leading-4 text-[#8C7387]">Gửi tên cảnh, mô tả hình ảnh và chỉ dẫn quay của cảnh này tới dịch vụ tạo ảnh. Chữ trên màn hình được giữ ở lớp riêng.</p>
+    <label className="block text-xs font-bold">Phong cách ảnh<select disabled={disabled || submitting} value={style} onChange={(event) => setStyle(event.target.value as StoryboardImageStyle)} className="mt-1.5 w-full rounded-lg border border-[#E0D6DF] bg-white p-2 text-xs font-normal"><option value="creator">Creator · ảnh màu tự nhiên</option><option value="illustration">Minh họa nhân vật màu</option><option value="cinematic">Điện ảnh</option></select></label>
+    <label className="block text-xs font-bold">Động tác trong cảnh<select disabled={disabled || submitting} value={creatorAction} onChange={(event) => setCreatorAction(event.target.value as StoryboardCreatorAction)} className="mt-1.5 w-full rounded-lg border border-[#E0D6DF] bg-white p-2 text-xs font-normal"><option value="auto">Theo mô tả cảnh</option><option value="talk-to-camera">Nói trước camera</option><option value="show-product">Giới thiệu sản phẩm</option><option value="unbox">Mở hộp / khui gói</option><option value="demonstrate">Sử dụng / demo</option><option value="b-roll">Cận cảnh sản phẩm / B-roll</option></select></label>
+    <p className="text-[10px] leading-4 text-[#8C7387]">Ưu tiên nhân vật, biểu cảm và bàn tay đang thao tác. Chọn B-roll khi chỉ cần cận cảnh sản phẩm.</p>
+    <label className="block text-xs font-bold">Mô tả thêm cho ảnh<textarea disabled={disabled || submitting} rows={2} maxLength={1_200} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Creator giơ gói sản phẩm ngang ngực, nét mặt hào hứng, góc máy ngang mắt…" className="mt-1.5 w-full rounded-lg border border-[#E0D6DF] bg-white p-2 text-xs font-normal leading-5" /></label>
+    <p className="text-[10px] leading-4 text-[#8C7387]">Gửi mô tả hình ảnh, chỉ dẫn quay và mô tả bổ sung của cảnh này tới dịch vụ tạo ảnh. Chữ trên màn hình được giữ ở lớp riêng.</p>
     <button type="button" disabled={!canGenerate} onClick={() => void generate()} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#765370] px-3 py-2.5 text-xs font-bold text-white disabled:opacity-40">{submitting || active ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}{submitting ? "Đang gửi…" : active ? active.status === "queued" ? "Đang chờ tạo ảnh…" : "Đang tạo ảnh…" : candidates.length ? "Tạo thêm phương án" : "Tạo ảnh cho cảnh này"}</button>
     {!workspace && !loadingError && <p className="text-[10px] text-[#8C7387]">Đang kiểm tra dịch vụ tạo ảnh…</p>}
     {loadingError && <p role="alert" className="text-xs text-[#A15B55]">{loadingError}</p>}

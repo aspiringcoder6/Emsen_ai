@@ -13,7 +13,9 @@ test("Cloudflare adapter authenticates only in a header, decodes private image b
     assert.equal(url, `https://api.cloudflare.com/client/v4/accounts/${options.accountId}/ai/run/${options.model}`);
     assert.equal(url.includes(options.apiToken), false);
     assert.deepEqual(init.headers, { Authorization: `Bearer ${options.apiToken}`, "Content-Type": "application/json" });
-    assert.deepEqual(JSON.parse(String(init.body)), { prompt: request.prompt, steps: 4, seed: 42 });
+    const body = JSON.parse(String(init.body));
+    assert.deepEqual(body, { prompt: request.prompt, steps: 4 });
+    assert.equal("seed" in body, false); // live schema rejects additional properties
     assert.equal(init.redirect, "error");
     return Response.json({ success: true, result: { image: png } });
   });
@@ -46,6 +48,24 @@ test("provider errors do not echo secrets or retry; quota, auth, timeout and inv
   mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => new Promise((_resolve, reject) => init.signal!.addEventListener("abort", () => reject(new Error(options.apiToken)), { once: true })));
   try { await assert.rejects(() => new CloudflareImageProvider({ ...options, timeoutMs: 10 }).generateImage(request), (error: { code: string }) => error.code === "timeout"); }
   finally { mock.restoreAll(); }
+});
+
+test("Cloudflare request validation errors retain only safe numeric diagnostics", async () => {
+  let calls = 0;
+  mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return Response.json({ errors: [{ code: 5006, message: `${options.apiToken} ${request.prompt}` }, { code: options.apiToken }] }, { status: 400 });
+  });
+  try {
+    await assert.rejects(() => new CloudflareImageProvider(options).generateImage(request), (error: any) => {
+      assert.equal(error.code, "configuration");
+      assert.deepEqual(error.diagnostics, { httpStatus: 400, providerCodes: [5006] });
+      assert.equal(JSON.stringify(error).includes(options.apiToken), false);
+      assert.equal(JSON.stringify(error).includes(request.prompt), false);
+      return true;
+    });
+    assert.equal(calls, 1);
+  } finally { mock.restoreAll(); }
 });
 
 test("oversized/malformed output is rejected and unconfigured providers never send a request", async () => {

@@ -22,7 +22,7 @@ export interface ImageGenerationProvider {
 }
 
 export class ImageProviderError extends Error {
-  constructor(readonly code: "configuration" | "credentials" | "quota" | "timeout" | "unavailable" | "invalid-image", message: string) {
+  constructor(readonly code: "configuration" | "credentials" | "quota" | "timeout" | "unavailable" | "invalid-image", message: string, readonly diagnostics?: { httpStatus: number; providerCodes: number[] }) {
     super(message);
     this.name = "ImageProviderError";
   }
@@ -70,7 +70,7 @@ export function validateGeneratedImage(bytes: Uint8Array): GeneratedImage["mimeT
   throw new ImageProviderError("invalid-image", "Dịch vụ không trả về ảnh PNG, JPEG hoặc WebP hợp lệ.");
 }
 
-async function boundedJson(response: Response): Promise<Record<string, unknown>> {
+async function boundedJson(response: Response, maxBytes = Math.ceil(maxImageBytes * 4 / 3) + 65_536): Promise<Record<string, unknown>> {
   if (!response.body) throw new ImageProviderError("invalid-image", "Dịch vụ trả về kết quả rỗng.");
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -80,7 +80,7 @@ async function boundedJson(response: Response): Promise<Record<string, unknown>>
       const chunk = await reader.read();
       if (chunk.done) break;
       size += chunk.value.length;
-      if (size > Math.ceil(maxImageBytes * 4 / 3) + 65_536) {
+      if (size > maxBytes) {
         await reader.cancel();
         throw new ImageProviderError("invalid-image", "Kết quả tạo ảnh quá lớn.");
       }
@@ -120,15 +120,24 @@ export class CloudflareImageProvider implements ImageGenerationProvider {
       const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${this.options.accountId}/ai/run/${this.model}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${this.options.apiToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: request.prompt, steps: 4, seed: request.seed }),
+        // The live Schnell schema has additionalProperties: false and accepts only
+        // prompt and steps. Keep seed in the common interface for other adapters.
+        body: JSON.stringify({ prompt: request.prompt, steps: 4 }),
         signal: controller.signal,
         redirect: "error",
       });
       if (!response.ok) {
-        await response.body?.cancel();
-        if (response.status === 401 || response.status === 403) throw new ImageProviderError("credentials", "Token tạo ảnh bị từ chối. Kiểm tra Account ID và quyền Workers AI Read/Edit.");
-        if (response.status === 429) throw new ImageProviderError("quota", "Dịch vụ đang giới hạn lượt hoặc đã hết hạn mức miễn phí. Chờ rồi thử lại; hệ thống không đổi sang dịch vụ tính phí.");
-        throw new ImageProviderError("unavailable", "Dịch vụ tạo ảnh chưa xử lý được yêu cầu. Kiểm tra hạn mức trong Cloudflare và thử lại sau.");
+        const payload = await boundedJson(response, 65_536).catch(() => null);
+        const providerCodes = Array.isArray(payload?.errors) ? payload.errors.flatMap((error: unknown) => {
+          const code = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+          return typeof code === "number" && Number.isSafeInteger(code) && code >= 0 ? [code] : [];
+        }).slice(0, 5) : [];
+        const diagnostics = { httpStatus: response.status, providerCodes };
+        // Only numeric codes are retained; provider messages can echo prompts or secrets.
+        if (providerCodes.includes(5006)) throw new ImageProviderError("configuration", "Định dạng yêu cầu tạo ảnh bị Cloudflare từ chối. Quản trị viên cần kiểm tra adapter theo schema của model.", diagnostics);
+        if (response.status === 401 || response.status === 403) throw new ImageProviderError("credentials", "Token tạo ảnh bị từ chối. Kiểm tra Account ID và quyền Workers AI Read/Edit.", diagnostics);
+        if (response.status === 429) throw new ImageProviderError("quota", "Dịch vụ đang giới hạn lượt hoặc đã hết hạn mức miễn phí. Chờ rồi thử lại; hệ thống không đổi sang dịch vụ tính phí.", diagnostics);
+        throw new ImageProviderError("unavailable", "Dịch vụ tạo ảnh chưa xử lý được yêu cầu. Kiểm tra hạn mức trong Cloudflare và thử lại sau.", diagnostics);
       }
       const payload = await boundedJson(response);
       const result = payload.result as { image?: unknown } | undefined;

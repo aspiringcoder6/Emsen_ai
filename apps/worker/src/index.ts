@@ -3,6 +3,8 @@ import { workerConfig } from "./config.js";
 import { workerDatabase } from "./database.js";
 import { claimNextJob, processMediaJob, recoverInterruptedJobs } from "./processor.js";
 import { claimNextStoryboardImageJob, processStoryboardImage, recoverInterruptedStoryboardImages } from "./storyboardImage.js";
+import { getStoryboardWorkerConfiguration } from "./storyboardDiagnostics.js";
+import { readWorkerQueues } from "./queues.js";
 
 let stopping = false;
 
@@ -14,21 +16,24 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 async function run() {
+  const queues = readWorkerQueues(process.argv.slice(2));
   await workerDatabase.query("SELECT 1");
-  await recoverInterruptedJobs();
-  await recoverInterruptedStoryboardImages();
-  console.log("[worker] media processor is ready");
+  if (queues.media) await recoverInterruptedJobs();
+  if (queues.images) await recoverInterruptedStoryboardImages();
+  console.log("[worker] processor is ready");
+  console.log(`[worker] consuming queues: ${[queues.media && "media_jobs", queues.images && "storyboard_image_jobs"].filter(Boolean).join(", ")}`);
+  if (queues.images) console.log(`[worker:storyboard-image] configuration ${JSON.stringify(getStoryboardWorkerConfiguration())}`);
 
   let preferImage = true;
   let lastImageRecovery = Date.now();
 
   while (!stopping) {
     try {
-      if (Date.now() - lastImageRecovery > 30_000) {
+      if (queues.images && Date.now() - lastImageRecovery > 30_000) {
         await recoverInterruptedStoryboardImages();
         lastImageRecovery = Date.now();
       }
-      if (preferImage) {
+      if (queues.images && preferImage) {
         const imageJob = await claimNextStoryboardImageJob();
         if (imageJob) {
           await processStoryboardImage(imageJob);
@@ -36,13 +41,15 @@ async function run() {
           continue;
         }
       }
-      const job = await claimNextJob();
-      if (job) {
-        await processMediaJob(job);
-        preferImage = true;
-        continue;
+      if (queues.media) {
+        const job = await claimNextJob();
+        if (job) {
+          await processMediaJob(job);
+          preferImage = true;
+          continue;
+        }
       }
-      if (!preferImage) {
+      if (queues.images && !preferImage) {
         const imageJob = await claimNextStoryboardImageJob();
         if (imageJob) {
           await processStoryboardImage(imageJob);

@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { createImageGenerationProvider, ImageProviderError, validateGeneratedImage } from "@creator-flow/ai-provider";
-import type { GenerateStoryboardImageRequestDto } from "@creator-flow/contracts";
+import type { GenerateStoryboardImageRequestDto, StoryboardCreatorAction } from "@creator-flow/contracts";
 import { workerConfig } from "./config.js";
 import { workerDatabase } from "./database.js";
 import { deleteMediaObject, uploadMediaBytes } from "./storage.js";
@@ -10,20 +10,54 @@ export type StoryboardImageJob = {
   input: GenerateStoryboardImageRequestDto;
 };
 
+function sceneWords(input: GenerateStoryboardImageRequestDto) {
+  return `${input.scene.visual} ${input.prompt}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+}
+
+export function storyboardCreatorAction(input: GenerateStoryboardImageRequestDto): StoryboardCreatorAction {
+  if (input.creatorAction && input.creatorAction !== "auto") return input.creatorAction;
+  const visual = sceneWords(input);
+  if (/b[ -]?roll|product.only|khong (co )?(nguoi|nhan vat)|chi (quay |co )?san pham/.test(visual)) return "b-roll";
+  if (/unbox|mo (hop|goi|bich)|khui|boc (hop|goi)/.test(visual)) return "unbox";
+  if (/thoa|boi kem|su dung|dung thu|demo|demonstrat|try on|applying/.test(visual)) return "demonstrate";
+  if (/gio (len|truoc)|gioi thieu san pham|\bcam\b|show.*product|hold.*product/.test(visual)) return "show-product";
+  return "talk-to-camera";
+}
+
 export function buildStoryboardImagePrompt(input: GenerateStoryboardImageRequestDto) {
   const styles = {
+    creator: "Full-color lifestyle photograph for a social-media creator video, natural daylight, warm modern colors, polished smartphone UGC video still, relatable home or creator studio.",
     sketch: "Storyboard pencil sketch, simple clear shapes, light paper texture, grayscale with subtle accent colors.",
-    cinematic: "Cinematic storyboard still, realistic lighting, natural colors, carefully framed scene.",
-    illustration: "Clean editorial illustration, clear silhouettes, soft colors, readable composition.",
+    cinematic: "Full-color cinematic video still, realistic lighting, expressive subject, carefully framed action.",
+    illustration: "Full-color polished character illustration, expressive face and body language, clear silhouettes, warm vibrant colors, readable action.",
   };
   if (!styles[input.style]) throw new ImageProviderError("configuration", "Phong cách minh họa không hợp lệ.");
+  const action = storyboardCreatorAction(input);
+  const actions: Record<Exclude<StoryboardCreatorAction, "auto">, string> = {
+    "talk-to-camera": "An adult Vietnamese content creator facing the recording camera, speaking with an expressive face and a clear hand gesture, engaging relaxed pose.",
+    "show-product": "An adult Vietnamese content creator presenting the described product toward the camera at chest height, hands and product clearly visible, lively face, product-review pose.",
+    unbox: "An adult Vietnamese content creator opening the described package at a table, both hands interacting with the package, excited expression, unboxing-video pose.",
+    demonstrate: "An adult Vietnamese content creator using or demonstrating the described item, hands actively performing the scene's action, clear confident posture and focused expression.",
+    "b-roll": "A close-up of the described product or action, with hands only when needed. Keep this an intentional B-roll insert; a presenter is not required.",
+  };
+  const words = sceneWords(input);
+  const product = /\bbim\b|\bta (em be|so sinh|tre)\b|diaper/.test(words) ? "The product is baby diapers: a diaper package and soft disposable diapers."
+    : /kem chong nang|sunscreen/.test(words) ? "The product is a sunscreen tube."
+    : /so tay|notebook/.test(words) ? "The item is a notebook."
+    : "";
   return [
-    "Create one visual reference for a video scene. No text, subtitles, typography, logos, or watermarks; titles will be added as a separate layer.",
+    "Create one clear video frame showing the scene's visible action. No text, subtitles, typography, logos, or watermarks; titles will be added separately.",
     styles[input.style],
-    `Compose for a ${input.aspectRatio} video frame with space for a text overlay.`,
-    input.prompt ? `Additional direction: ${input.prompt.slice(0, 1_000)}` : "",
-    `Scene: ${input.scene.title.slice(0, 120)}. ${input.scene.visual.slice(0, 700)}`,
-    input.scene.direction ? `Camera: ${input.scene.direction.slice(0, 250)}` : "",
+    actions[action === "auto" ? "talk-to-camera" : action],
+    action === "b-roll" ? "Focus tightly on the relevant object and action."
+      : "Medium or waist-up shot; foreground subject fills most of the frame, face and hands readable. Supporting objects stay close to the subject; simple softly blurred background.",
+    product,
+    `Compose for ${input.aspectRatio}; leave a little space for a text overlay.`,
+    input.style === "sketch" ? "" : "Finished image with rich natural color and a clearly readable action.",
+    // Titles such as 'Hook' and 'CTA' are narrative labels, not visual objects.
+    `Visible action described by the creator: ${input.scene.visual.slice(0, 550)}`,
+    input.prompt ? `Additional visual direction: ${input.prompt.slice(0, 450)}` : "",
+    input.scene.direction ? `Camera and body language: ${input.scene.direction.slice(0, 150)}` : "",
   ].filter(Boolean).join("\n").slice(0, 2_048);
 }
 
@@ -42,6 +76,7 @@ export async function claimNextStoryboardImageJob(): Promise<StoryboardImageJob 
 }
 
 export async function processStoryboardImage(job: StoryboardImageJob) {
+  console.log(`[worker:storyboard-image] processing job ${job.id}`);
   const assetId = randomUUID();
   let objectKey: string | null = null;
   let committed = false;
@@ -72,16 +107,18 @@ export async function processStoryboardImage(job: StoryboardImageJob) {
       if (Number(count.rows[0]!.count) >= 64) throw new ImageProviderError("configuration", "Kịch bản đã đạt giới hạn 64 ảnh.");
       const active = await client.query("SELECT id FROM storyboard_image_jobs WHERE id = $1 AND status = 'running' FOR UPDATE", [job.id]);
       if (!active.rowCount) throw new ImageProviderError("configuration", "Lượt tạo ảnh đã kết thúc hoặc bị gián đoạn.");
-      await client.query("INSERT INTO storyboard_assets (id, script_id, user_id, file_name, mime_type, size_bytes, object_key, status, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,'ready',$8)", [assetId, job.script_id, job.user_id, `storyboard-${job.input.scene.id.slice(0, 40)}.${extension}`, mimeType, image.bytes.length, objectKey, { origin: "generated", jobId: job.id, sceneId: job.input.scene.id, provider: image.provider, model: image.model, prompt, style: job.input.style, seed, requestedAspectRatio: job.input.aspectRatio }]);
+      await client.query("INSERT INTO storyboard_assets (id, script_id, user_id, file_name, mime_type, size_bytes, object_key, status, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7,'ready',$8)", [assetId, job.script_id, job.user_id, `storyboard-${job.input.scene.id.slice(0, 40)}.${extension}`, mimeType, image.bytes.length, objectKey, { origin: "generated", jobId: job.id, sceneId: job.input.scene.id, provider: image.provider, model: image.model, prompt, style: job.input.style, creatorAction: storyboardCreatorAction(job.input), requestedSeed: seed, requestedAspectRatio: job.input.aspectRatio }]);
       await client.query("UPDATE storyboard_image_jobs SET status = 'succeeded', progress = 100, asset_id = $1, error_message = NULL, finished_at = NOW(), updated_at = NOW() WHERE id = $2 AND status = 'running'", [assetId, job.id]);
       await client.query("COMMIT");
       committed = true;
+      console.log(`[worker:storyboard-image] completed job ${job.id}`);
     } catch (error) { await client.query("ROLLBACK"); throw error; }
     finally { client.release(); }
   } catch (error) {
     if (objectKey && !committed) await deleteMediaObject(objectKey).catch(() => undefined);
     const message = error instanceof ImageProviderError ? error.message : "Chưa thể tạo hoặc lưu ảnh. Kiểm tra kho media và thử lại thủ công; lượt này có thể đã dùng hạn mức.";
     await workerDatabase.query("UPDATE storyboard_image_jobs SET status = 'failed', error_message = $1, finished_at = NOW(), updated_at = NOW() WHERE id = $2 AND status = 'running'", [message, job.id]);
-    console.warn(`[worker:storyboard-image] job ${job.id} failed`);
+    const diagnostics = error instanceof ImageProviderError && error.diagnostics ? ` ${JSON.stringify(error.diagnostics)}` : "";
+    console.warn(`[worker:storyboard-image] job ${job.id} failed (${error instanceof ImageProviderError ? error.code : "processing-error"})${diagnostics}`);
   }
 }

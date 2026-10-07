@@ -15,6 +15,7 @@
     "dev:web": "npm run dev --workspace @creator-flow/web",
     "dev:api": "npm run dev --workspace @creator-flow/api",
     "dev:worker": "npm run dev --workspace @creator-flow/worker",
+    "dev:worker:images": "npm run dev:images --workspace @creator-flow/worker",
     "build:packages": "npm run build --workspace @creator-flow/contracts && npm run build --workspace @creator-flow/ai-provider",
     "build": "npm run build:packages && npm run build --workspace @creator-flow/api && npm run build --workspace @creator-flow/web && npm run build --workspace @creator-flow/worker",
     "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
