@@ -71,7 +71,7 @@ không đi qua bộ nhớ API. Khi deploy, cấu hình nhóm biến `MEDIA_STORA
   FFmpeg để người dùng nghe mạch nối trước khi duyệt. Preview nằm trong bucket riêng tư
   và không ghi đè video nguồn.
 
-Khi deploy, `apps/worker` phải chạy như một Background Worker riêng với lệnh
+Khi deploy video, `apps/worker` chạy như một Background Worker riêng với lệnh
 `npm run start --workspace @creator-flow/worker`. Worker dùng chung `DATABASE_URL`,
 `AI_KEY_ENCRYPTION_KEY`, `GEMINI_*` và `MEDIA_STORAGE_*` với API. Camera trên trình
 duyệt yêu cầu domain HTTPS (Render đã cung cấp HTTPS).
@@ -94,6 +94,12 @@ và cùng database với API. Sau khi build worker, lệnh
 `npm run check:storyboard --workspace @creator-flow/worker -- --job <UUID>`
 kiểm tra cấu hình, bảng và job mà không gọi Cloudflare. Xem mục xử lý `queued`
 trong tài liệu setup ở trên để cấu hình build/start và đọc log worker.
+
+Demo ảnh trên Render Free có thể bật `STORYBOARD_IMAGE_WORKER_ENABLED=true`
+ở service API sau khi build toàn repository. API quản lý một worker chỉ nhận
+ảnh và dùng cùng env/database; không cần service Background Worker trả phí.
+Default là tắt; chế độ này cùng ngủ/dừng theo API, phù hợp demo. Xem hướng dẫn
+build/start và hạn chế Render Free trong tài liệu setup ở trên.
 
 Adapter FLUX.1 Schnell chỉ gửi `prompt` và `steps` theo schema đang hoạt động
 của Cloudflare. Log lỗi giữ HTTP status và mã lỗi số, không ghi token hoặc

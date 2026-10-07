@@ -47,6 +47,40 @@ Nếu bucket chưa có, đặt `MEDIA_STORAGE_AUTO_CREATE_BUCKET=true` cho môi 
 
 `configured: true` trong API trạng thái chỉ xác nhận cấu hình provider/kho media của **API**. API lưu yêu cầu vào PostgreSQL; **ứng dụng `apps/worker` của Emsen** nhận và gọi Cloudflare. Cloudflare Workers AI không tự đọc hàng đợi trong database của Emsen. Nếu mã worker đang chạy chưa hỗ trợ storyboard, worker bị dừng, dùng database khác hoặc bị chặn khi xử lý video dài, job có thể vẫn ở `queued` dù API được cấu hình đúng.
 
+### Demo trên Render Free: chạy worker ảnh trong service API
+
+[Render chỉ hỗ trợ Free cho một số loại service](https://render.com/docs/free), không có Free instance cho Background Worker riêng. Để demo ảnh trên service API hiện có, mã nguồn hỗ trợ bật một process worker ảnh do API quản lý, dùng chung env/database/kho media. Không cần tạo thêm service trả phí.
+
+Trong **service API**, đặt Root Directory trống để build từ gốc repository, rồi dùng:
+
+```text
+Build Command: npm ci --include=dev && npm run build
+Start Command: npm run start --workspace @creator-flow/api
+```
+
+Thêm biến ở service API, nhập giá trị `true` trực tiếp trong Render, không kèm dấu ngoặc kép:
+
+```dotenv
+STORYBOARD_IMAGE_WORKER_ENABLED=true
+```
+
+Giữ nguyên các biến `DATABASE_URL`, `CLOUDFLARE_*`, `IMAGE_GENERATION_*` và `MEDIA_STORAGE_*` của API. API áp dụng migration trước rồi khởi động worker với `--queue=images`. Worker kế thừa cùng môi trường nên không phải chép env sang service thứ hai. Không tự xử lý hàng đợi video hoặc gọi Gemini. Default của tùy chọn là `false`; nếu đã có worker riêng, giữ `false` và cấu hình service đó như bên dưới.
+
+Sau khi cập nhật mã nguồn/build/env và redeploy API, log cần có:
+
+```text
+[api:storyboard-worker] starting image-only worker in this API service; consuming storyboard_image_jobs
+[worker] consuming queues: storyboard_image_jobs
+```
+
+API báo lỗi lúc khởi động nếu chưa build `apps/worker/dist/index.js` hoặc nhập flag sai. Nếu worker con dừng ngoài dự kiến, API cũng tắt với mã lỗi để host có thể khởi động lại cả hai, thay vì tiếp tục nhận ảnh mà không có consumer. Khi service dừng, API gửi SIGTERM cho worker để hoàn tất lượt hiện tại, chờ tối đa 25 giây rồi kết thúc process. Quy tắc job bị gián đoạn/timeout và không tự gọi lại Cloudflare vẫn giữ nguyên.
+
+Đây là chế độ demo: API và worker ảnh cùng bị dừng khi Render Free ngủ sau 15 phút không có request. Mở ứng dụng/gọi API sẽ đánh thức service; dữ liệu job vẫn ở PostgreSQL và ảnh ở kho riêng. Tác vụ bị dừng giữa chừng có thể chuyển sang lỗi theo cơ chế phục hồi hiện có. Với tác vụ dài hoặc cần chạy liên tục, dùng worker riêng. [Cơ chế ngủ của Render Free](https://render.com/docs/free#spinning-down-on-idle).
+
+Tiến độ **0% / queued** nghĩa là chưa được worker nhận. Worker nhận job sẽ đặt `running` / **10%** trước khi kiểm tra cấu hình và gọi Cloudflare; có ảnh trả về chuyển **75%** lúc lưu vào kho media, rồi **100%** khi hoàn tất. Lỗi xác thực/quota Cloudflare được trả sau khi nhận job, không giải thích các job chưa từng có `started_at`.
+
+### Worker riêng
+
 Deploy một service xử lý nền chạy liên tục từ **thư mục gốc repository**, cùng phiên bản mã nguồn với API:
 
 ```sh
@@ -130,6 +164,7 @@ Agent sau này dùng cùng `queueStoryboardImage` / `getStoryboardImageWorkspace
 ```text
 npm run check
 npm run test:storyboard --workspace @creator-flow/api
+npm run test:embedded-images --workspace @creator-flow/api
 npm run test:storyboard --workspace @creator-flow/worker
 npm run test:storyboard-integration --workspace @creator-flow/api
 ```
@@ -141,3 +176,7 @@ Ngày 06/10/2026: 12 kiểm thử API/provider và 6 kiểm thử worker đều 
 Chẩn đoán ứng dụng local đang chạy ngày 06/10/2026 tìm thấy API/web đang hoạt động nhưng không có process worker. Sau khi khởi động service ảnh và sửa trường `seed` không được schema cho phép, một lượt thử lại qua service enqueue thật đã hoàn thành `succeeded`/100% trong khoảng 2,3 giây và lưu ảnh Cloudflare vào kho media. Lượt thử lại dùng cùng mô tả cảnh đã được gửi trước đó, mã yêu cầu mới và giới hạn/sổ lượt hiện có. Worker không tự thử lại tác vụ lỗi. Job deploy được cung cấp trước đó không nằm trong database local; chưa có URL/log production để kiểm tra service deploy trực tiếp.
 
 Kiểm tra giao diện ngày 07/10/2026 dùng tài khoản/kịch bản thử riêng và đúng Cloudflare adapter: chọn Creator · ảnh màu tự nhiên + Giới thiệu sản phẩm, tạo một ảnh thật hoàn thành 100% trong khoảng 7,8 giây. Ảnh có nhân vật màu ở tiền cảnh và hai tay cầm sản phẩm. Cảnh thứ hai chọn PNG Emsen Hào hứng gốc, không gọi AI. Cả hai ảnh và lớp chữ giữ nguyên sau chọn/lưu/mở lại; metadata ảnh AI ghi `creator`/`show-product`. Build web sau chỉnh khoảng trống tránh nút chat nổi cũng thành công. Minh chứng: `tmp/storyboard-creator-style.jpg`.
+
+Chẩn đoán deploy ngày 07/10/2026 bằng transaction READ ONLY: kết nối Neon thành công và đã có bảng job/usage. Một job mới chờ gần 10 phút ở `queued`/0%, `started_at` chưa có; job cũ đã `failed` cũng chưa từng được nhận. Cả hai đều chưa đến bước gọi Cloudflare. Không sửa job, migration, quota hoặc tạo ảnh trên deploy trong lần kiểm tra này.
+
+Chế độ chạy worker ảnh kèm API: 4 kiểm thử vòng đời process và 6 kiểm thử worker đều thành công; typecheck API và build toàn repository thành công. Kiểm tra khởi động thực tế trên database local với hàng đợi ảnh trống xác nhận API healthy, worker chỉ nhận `storyboard_image_jobs`, hàng đợi video giữ nguyên và API/worker dừng sạch. Không tạo ảnh hoặc gọi provider trong lần kiểm tra khởi động này. Tùy chọn chưa được bật/redeploy lên Render trong phiên chẩn đoán.
