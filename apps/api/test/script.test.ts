@@ -3,7 +3,8 @@ import { test } from "node:test";
 import type { ContentPlanVersionDto, ScriptDocumentDto, UpdateScriptRequestDto } from "@creator-flow/contracts";
 import { parseCreateScript, parseScriptAssist, parseScriptBrainstorm, parseStoryboard, parseUpdateScript } from "../src/modules/scripts/script.schema.js";
 import { synchronizeScriptWithPlan } from "../src/modules/scripts/scriptPlanSync.js";
-import { buildFlexibleTimelineGuide, countSpokenWords, normalizeScriptTimeline, repairScriptTimeline, scriptGenerationBlockingIssues, scriptGenerationIssues, scriptTimelineIssues, scriptWordBudget } from "../src/modules/scripts/scriptTimeline.js";
+import { buildFlexibleTimelineGuide, countSpokenWords, normalizeScriptTimeline, repairScriptTimeline, scriptGenerationBlockingIssues, scriptGenerationIssues, scriptTimelineIssues, scriptWordBudget, scriptSectionSuggestionIssues } from "../src/modules/scripts/scriptTimeline.js";
+import { countSpeechUnits, estimateSpeech, speechSlotStatus, speechUnitBudget } from "@creator-flow/contracts";
 
 const validDraft: UpdateScriptRequestDto = {
   revision: 1,
@@ -98,20 +99,20 @@ test("accepts flexible timestamp layouts that cover the selected duration", () =
   assert.equal(guide.targetDurationSeconds, 60);
   assert.match(guide.note, /không có tỷ lệ/i);
 
-  const words = Array.from({ length: 104 }, (_, index) => `từ${index + 1}`);
+  const words = Array.from({ length: 230 }, (_, index) => `tiếng${index + 1}`);
   const content = normalizeScriptTimeline({
     hook: "0:00-0:04: [Nói trực tiếp] Hook cụ thể khiến người xem dừng lại và muốn nghe tiếp câu chuyện này.",
     body: [
-      `[0:04-0:19] [Nói trực tiếp] ${words.slice(0, 34).join(" ")}`,
-      `[0:19-0:42] [Voice-over] ${words.slice(34, 75).join(" ")}`,
-      `[0:42-0:55] [Nói trực tiếp] ${words.slice(75).join(" ")}`,
+      `[0:04-0:19] [Nói trực tiếp] ${words.slice(0, 68).join(" ")}`,
+      `[0:19-0:42] [Voice-over] ${words.slice(68, 171).join(" ")}`,
+      `[0:42-0:55] [Nói trực tiếp] ${words.slice(171).join(" ")}`,
     ].join("\n"),
-    cta: "[0:55-1:00] [Nói trực tiếp] Bạn từng gặp điều này chưa? Kể mình nghe ở bình luận nhé.",
+    cta: "[0:55-1:00] [Nói trực tiếp] Bạn từng gặp điều này chưa? Kể mình nghe ở bình luận để cùng tìm cách giải quyết nhé.",
     storyboard: [],
   });
   assert.match(content.hook, /^\[0:00–0:04\]/);
   assert.match(content.cta, /^\[0:55–1:00\]/);
-  assert.equal(countSpokenWords(content.body), 104);
+  assert.equal(countSpokenWords(content.body), 230);
   assert.deepEqual(scriptGenerationIssues(content, 60), []);
 
   const invalidHookAndCtaTiming = {
@@ -127,7 +128,7 @@ test("accepts flexible timestamp layouts that cover the selected duration", () =
 
 test("rejects a visibly short script for its selected duration", () => {
   const budget = scriptWordBudget(60);
-  assert.deepEqual(budget.total, { min: 130, max: 170 });
+  assert.deepEqual(budget.total, { min: 238, max: 302 });
   const issues = scriptGenerationIssues({
     hook: "Có những hôm ăn uống đến phát khóc.",
     body: "Tâm sự thật lòng.",
@@ -153,22 +154,62 @@ test("repairs common AI timeline formatting without discarding its dialogue", ()
   };
   const repaired = repairScriptTimeline(content, 60);
   assert.deepEqual(scriptTimelineIssues(repaired, 60), []);
-  assert.match(repaired.hook, /^\[0:00–0:05\] \[Nói trực tiếp\]/);
+  assert.match(repaired.hook, /^\[0:00–0:04\] \[Nói trực tiếp\]/);
   assert.match(repaired.cta, /–1:00\]/);
   assert.match(repaired.body, /đồng nghiệp bắt đầu hỏi/);
   assert.ok(repaired.body.split("\n").length >= 2);
 });
 
-test("does not reject a complete script only because the selected hook is slightly long", () => {
-  const bodyWords = Array.from({ length: 110 }, (_, index) => `nội-dung-${index + 1}`);
+test("accepts complete speech near the planned pace without forcing exact word counts", () => {
+  const bodyWords = Array.from({ length: 230 }, (_, index) => `tiếng${index + 1}`);
   const content = {
     hook: "[0:00–0:05] [Nói trực tiếp] Tôi đã thử mặc đồ tổng giá trị dưới 300k đi làm cả tuần và cái kết bất ngờ.",
-    body: `[0:05–0:30] [Nói trực tiếp] ${bodyWords.slice(0, 55).join(" ")}\n[0:30–0:55] [Voice-over] ${bodyWords.slice(55).join(" ")}`,
-    cta: "[0:55–1:00] [Nói trực tiếp] Bạn muốn tôi chia sẻ cách phối cụ thể không?",
+    body: `[0:05–0:30] [Nói trực tiếp] ${bodyWords.slice(0, 115).join(" ")}\n[0:30–0:55] [Voice-over] ${bodyWords.slice(115).join(" ")}`,
+    cta: "[0:55–1:00] [Nói trực tiếp] Bạn muốn tôi chia sẻ cách phối cụ thể không? Hãy để lại một câu hỏi ở bình luận nhé.",
     storyboard: [],
   };
-  assert.ok(scriptGenerationIssues(content, 60).some((issue) => issue.includes("Hook nên tối đa")));
+  assert.deepEqual(scriptGenerationIssues(content, 60), []);
   assert.deepEqual(scriptGenerationBlockingIssues(content, 60), []);
+});
+
+test("flags a four-second Vietnamese line assigned ten seconds and excludes production labels", () => {
+  const line = "[0:00–0:10] [Nói trực tiếp] Hôm nay mình sẽ chỉ bạn cách đặt điện thoại để quay một video thật tự nhiên nhé.";
+  const timing = speechSlotStatus(line, 10);
+  assert.equal(timing.count, 18);
+  assert.equal(timing.unit, "tiếng");
+  assert.equal(timing.status, "short");
+  assert.ok(timing.seconds < 5);
+  assert.equal(countSpeechUnits("[Voice-over] [Cận cảnh tay mở hộp] Một chiếc hộp. — …"), 3);
+  assert.ok(estimateSpeech(line, { pacing: "fast" }).seconds < estimateSpeech(line, { pacing: "slow" }).seconds);
+  assert.ok(speechUnitBudget(10).min >= 39);
+  assert.equal(speechSlotStatus("Hello this is a short English line", 3, { language: "English" }).unit, "từ");
+});
+
+test("rejects a stretched segment even when the total speech budget is met", () => {
+  const content = {
+    hook: `[0:00–0:04] [Nói trực tiếp] ${"mở ".repeat(18)}`,
+    body: `[0:04–0:14] [Voice-over] ${"ngắn ".repeat(18)}\n[0:14–0:55] [Voice-over] ${"dài ".repeat(215)}`,
+    cta: `[0:55–1:00] [Nói trực tiếp] ${"kết ".repeat(22)}`,
+    storyboard: [],
+  };
+  const issues = scriptGenerationBlockingIssues(content, 60);
+  assert.ok(issues.some((issue) => issue.includes("0:04–0:14") && issue.includes("đọc ước tính")));
+  assert.ok(!issues.some((issue) => issue.includes("dưới mức tối thiểu")));
+});
+
+test("formatting repair cannot make an underfilled script pass timing checks", () => {
+  const repaired = repairScriptTimeline({ hook: "Đừng chờ đến thứ Hai để bắt đầu nhé.", body: "Hãy thử quay một video ngắn ngay hôm nay.", cta: "Bạn sẽ bắt đầu từ việc nhỏ nào hôm nay?", storyboard: [] }, 60);
+  assert.deepEqual(scriptTimelineIssues(repaired, 60), []);
+  assert.ok(scriptGenerationBlockingIssues(repaired, 60).some((issue) => issue.includes("đọc ước tính")));
+});
+
+test("AI section rewrites cannot make short speech look valid by shrinking its assigned timeline", () => {
+  const current = `[0:04–0:14] [Nói trực tiếp] ${"tiếng ".repeat(45)}`;
+  const shorter = `[0:04–0:08] [Nói trực tiếp] ${"tiếng ".repeat(18)}`;
+  assert.ok(scriptSectionSuggestionIssues(shorter, current).some((issue) => issue.includes("Giữ nguyên điểm bắt đầu")));
+  assert.deepEqual(scriptSectionSuggestionIssues(current, current), []);
+  assert.ok(scriptSectionSuggestionIssues(current.replace("[Nói trực tiếp]", ""), current).some((issue) => issue.includes("nhãn")));
+  assert.ok(scriptSectionSuggestionIssues("Đây là một câu không có mốc.", current).length);
 });
 
 test("validates creative brainstorming inputs", () => {

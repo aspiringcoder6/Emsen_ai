@@ -4,7 +4,7 @@ import { Check, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 import { ApiError } from "../../../lib/apiClient";
 import { generateStoryboardImage, getStoryboardAsset, getStoryboardImageWorkspace } from "../scriptApi";
 
-const styleLabels: Record<StoryboardImageStyle, string> = { creator: "Creator ảnh màu", cinematic: "Điện ảnh", illustration: "Minh họa màu", sketch: "Phác thảo cũ" };
+const styleLabels: Record<StoryboardImageStyle, string> = { creator: "Creator ảnh màu", cinematic: "Điện ảnh", illustration: "Minh họa màu", sketch: "Phác thảo storyboard" };
 
 function ImageCandidate({ scriptId, job, selected, disabled, outdated, onUse }: { scriptId: string; job: StoryboardImageJobDto; selected: boolean; disabled: boolean; outdated: boolean; onUse: () => void }) {
   const [url, setUrl] = useState("");
@@ -40,7 +40,7 @@ export function StoryboardImageGenerator({ scriptId, scriptRevision, frame, aspe
   const [loadingError, setLoadingError] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [style, setStyle] = useState<StoryboardImageStyle>("creator");
+  const [style, setStyle] = useState<StoryboardImageStyle>("sketch");
   const [creatorAction, setCreatorAction] = useState<StoryboardCreatorAction>("auto");
   const [prompt, setPrompt] = useState("");
   const mounted = useRef(false);
@@ -77,7 +77,7 @@ export function StoryboardImageGenerator({ scriptId, scriptRevision, frame, aspe
   async function generate() {
     if (!canGenerate) return;
     setError(""); setSubmitting(true);
-    const source = { scriptRevision, scene: { id: frame.id, title: frame.title.trim(), visual: frame.visual.trim(), direction: frame.direction.trim(), locked: frame.locked ?? false }, aspectRatio, style, creatorAction, prompt: prompt.trim() };
+    const source = { scriptRevision, scene: { id: frame.id, title: frame.title.trim(), visual: frame.visual.trim(), direction: frame.direction.trim(), locked: frame.locked ?? false, shotSize: frame.shotSize?.trim() ?? "", cameraAngle: frame.cameraAngle?.trim() ?? "", cameraMovement: frame.cameraMovement?.trim() ?? "", imagePrompt: frame.imagePrompt?.trim() ?? "" }, aspectRatio, style, creatorAction, prompt: prompt.trim() };
     const previous = lastAttempt.current;
     // A network error might occur after acceptance. Reuse its request id for the same input.
     const request = previous && JSON.stringify({ ...previous, requestId: undefined }) === JSON.stringify(source)
@@ -97,7 +97,8 @@ export function StoryboardImageGenerator({ scriptId, scriptRevision, frame, aspe
 
   return <div className="space-y-3 rounded-xl border border-[#DECFDD] bg-[#FCF8FC] p-3" aria-label="Tạo ảnh minh họa bằng AI">
     <div className="flex items-center justify-between gap-2"><h4 className="flex items-center gap-1.5 text-xs font-bold text-[#72506B]"><Sparkles size={14} /> Minh họa bằng AI</h4><button type="button" aria-label="Tải lại trạng thái tạo ảnh" onClick={() => setRefresh((value) => value + 1)} className="rounded p-1 text-[#8C7387]"><RefreshCw size={13} /></button></div>
-    <label className="block text-xs font-bold">Phong cách ảnh<select disabled={disabled || submitting} value={style} onChange={(event) => setStyle(event.target.value as StoryboardImageStyle)} className="mt-1.5 w-full rounded-lg border border-[#E0D6DF] bg-white p-2 text-xs font-normal"><option value="creator">Creator · ảnh màu tự nhiên</option><option value="illustration">Minh họa nhân vật màu</option><option value="cinematic">Điện ảnh</option></select></label>
+    <label className="block text-xs font-bold">Phong cách ảnh<select disabled={disabled || submitting} value={style} onChange={(event) => setStyle(event.target.value as StoryboardImageStyle)} className="mt-1.5 w-full rounded-lg border border-[#E0D6DF] bg-white p-2 text-xs font-normal"><option value="sketch">Phác thảo storyboard · nét đơn giản</option><option value="creator">Creator · ảnh màu tự nhiên</option><option value="illustration">Minh họa nhân vật màu</option><option value="cinematic">Điện ảnh</option></select></label>
+    <p className="text-[11px] leading-5 text-[#8C7387]">Phác thảo tập trung vào vị trí, góc máy và thao tác. Một ảnh cho một shot; số cảnh và chỉ dẫn nằm ngoài ảnh để dễ đọc.</p>
     <label className="block text-xs font-bold">Động tác trong cảnh<select disabled={disabled || submitting} value={creatorAction} onChange={(event) => setCreatorAction(event.target.value as StoryboardCreatorAction)} className="mt-1.5 w-full rounded-lg border border-[#E0D6DF] bg-white p-2 text-xs font-normal"><option value="auto">Theo mô tả cảnh</option><option value="talk-to-camera">Nói trước camera</option><option value="show-product">Giới thiệu sản phẩm</option><option value="unbox">Mở hộp / khui gói</option><option value="demonstrate">Sử dụng / demo</option><option value="b-roll">Cận cảnh sản phẩm / B-roll</option></select></label>
     <p className="text-[10px] leading-4 text-[#8C7387]">Ưu tiên nhân vật, biểu cảm và bàn tay đang thao tác. Chọn B-roll khi chỉ cần cận cảnh sản phẩm.</p>
     <label className="block text-xs font-bold">Mô tả thêm cho ảnh<textarea disabled={disabled || submitting} rows={2} maxLength={1_200} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Creator giơ gói sản phẩm ngang ngực, nét mặt hào hứng, góc máy ngang mắt…" className="mt-1.5 w-full rounded-lg border border-[#E0D6DF] bg-white p-2 text-xs font-normal leading-5" /></label>
@@ -112,7 +113,7 @@ export function StoryboardImageGenerator({ scriptId, scriptRevision, frame, aspe
     {active && <div className="space-y-1"><div role="progressbar" aria-label="Tiến độ tạo ảnh" aria-valuemin={0} aria-valuemax={100} aria-valuenow={active.progress} className="h-1.5 overflow-hidden rounded-full bg-[#E7DDE5]"><div className="h-full bg-[#97718F] transition-all" style={{ width: `${Math.max(5, active.progress)}%` }} /></div><p className="text-[10px] leading-4 text-[#8C7387]">Bạn có thể chỉnh các cảnh khác. Ảnh sẽ hiện trong danh sách phương án khi hoàn tất.</p>{active.status === "queued" && <p className="text-[10px] leading-4 text-[#8C7387]">Nếu chờ lâu, kiểm tra dịch vụ xử lý nền đang chạy.</p>}</div>}
     {error && <p role="alert" className="text-xs leading-5 text-[#A15B55]">{error}</p>}
     {!active && jobs[0]?.status === "failed" && <p role="alert" className="text-xs leading-5 text-[#A15B55]">{jobs[0].errorMessage}</p>}
-    {candidates.length > 0 && <div><p className="mb-2 text-[11px] font-bold text-[#72506B]">Chọn ảnh phù hợp với cảnh</p><div className="grid grid-cols-2 gap-2">{candidates.map((job) => <ImageCandidate key={job.id} scriptId={scriptId} job={job} selected={frame.illustrationAssetId === job.assetId} disabled={disabled || Boolean(frame.locked)} outdated={job.source.scene.title !== frame.title.trim() || job.source.scene.visual !== frame.visual.trim() || job.source.scene.direction !== frame.direction.trim() || job.source.aspectRatio !== aspectRatio} onUse={() => { if (job.assetId) onUseImage(frame.id, job.assetId); }} />)}</div></div>}
+    {candidates.length > 0 && <div><p className="mb-2 text-[11px] font-bold text-[#72506B]">Chọn ảnh phù hợp với cảnh</p><div className="grid grid-cols-2 gap-2">{candidates.map((job) => <ImageCandidate key={job.id} scriptId={scriptId} job={job} selected={frame.illustrationAssetId === job.assetId} disabled={disabled || Boolean(frame.locked)} outdated={job.source.scene.title !== frame.title.trim() || job.source.scene.visual !== frame.visual.trim() || job.source.scene.direction !== frame.direction.trim() || job.source.aspectRatio !== aspectRatio || (job.source.scene.shotSize ?? "") !== (frame.shotSize?.trim() ?? "") || (job.source.scene.cameraAngle ?? "") !== (frame.cameraAngle?.trim() ?? "") || (job.source.scene.cameraMovement ?? "") !== (frame.cameraMovement?.trim() ?? "") || (job.source.scene.imagePrompt ?? "") !== (frame.imagePrompt?.trim() ?? "")} onUse={() => { if (job.assetId) onUseImage(frame.id, job.assetId); }} />)}</div></div>}
     {workspace?.configured && !workspace.capabilities.exactAspectRatio && <p className="text-[10px] leading-4 text-[#8C7387]">Ảnh tham chiếu có thể khác tỷ lệ video; bảng sẽ hiển thị trọn ảnh trong khung.</p>}
   </div>;
 }

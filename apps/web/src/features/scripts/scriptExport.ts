@@ -29,6 +29,10 @@ export function scriptAsText(script: ScriptDocumentDto) {
     ? script.content.storyboard.map((frame, index) => [
       `CẢNH ${index + 1}: ${frame.title.trim() || `Keyframe ${index + 1}`} (${frame.durationSeconds} giây)`,
       `Hình ảnh: ${textOrPlaceholder(frame.visual)}`,
+      frame.shotSize ? `Cỡ cảnh: ${frame.shotSize}` : "",
+      frame.cameraAngle ? `Góc máy: ${frame.cameraAngle}` : "",
+      frame.cameraMovement ? `Chuyển động máy: ${frame.cameraMovement}` : "",
+      frame.setup ? `Chuẩn bị quay: ${frame.setup}` : "",
       frame.visualPurpose.trim() ? `Mục đích cảnh: ${frame.visualPurpose.trim()}` : "",
       frame.broll.trim() ? `B-roll: ${frame.broll.trim()}` : "",
       `Lời thoại: ${textOrPlaceholder(frame.dialogue)}`,

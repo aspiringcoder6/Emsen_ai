@@ -203,7 +203,7 @@ export function CreateScriptPanel({
           <button type="button" onClick={() => setCustomDuration(true)} className={`rounded-xl border px-3 py-2 text-xs font-bold ${customDuration ? "border-[#72B65D] bg-[#EAF6E4] text-[#31583A]" : "border-[#E5DED8] text-[#748A74]"}`}>Tùy chỉnh</button>
           {customDuration && <label className="flex items-center gap-2 text-xs text-[#748A74]"><input aria-label="Thời lượng tùy chỉnh" type="number" min={5} max={3600} value={duration} onChange={(event) => setDuration(Number(event.target.value))} className="w-20 rounded-xl border border-[#E5DED8] px-3 py-2 text-[#31583A]" /> giây</label>}
         </div>
-        {validDuration && <p className="mt-2 text-[11px] text-[#879487]">Gợi ý khoảng {words.min}–{words.max} từ để lời nói thoải mái.</p>}
+        {validDuration && <p className="mt-2 text-[11px] text-[#879487]">Gợi ý khoảng {words.min}–{words.max} tiếng (đếm theo dấu cách) cho nhịp đọc cân bằng.</p>}
       </div>
 
       <label className="mt-5 block text-xs font-bold">Ghi chú cho kịch bản <span className="font-normal text-[#879487]">(không bắt buộc)</span><textarea className={inputClass} rows={2} maxLength={3000} value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="Thông điệp, điều cần tránh hoặc cảm giác bạn muốn tạo…" /></label>

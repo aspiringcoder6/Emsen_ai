@@ -4,6 +4,9 @@ import { ArrowDown, ArrowUp, Check, GripVertical, ImagePlus, LoaderCircle, LockK
 import { getStoryboardAsset, uploadStoryboardAsset } from "../scriptApi";
 import { StoryboardImageGenerator } from "./StoryboardImageGenerator";
 import { EmsenScenePicker, type EmsenScenePreset } from "./EmsenScenePicker";
+import type { SpeechTimingOptions } from "@creator-flow/contracts";
+import { SpeechTimingHint } from "./SpeechTimingHint";
+import { ShotCompositionGuide } from "./ShotCompositionGuide";
 
 const inputClass = "mt-1.5 w-full rounded-xl border border-[#E1E7DC] bg-[#FFFDF8] px-3 py-2 text-sm font-normal leading-6 text-[#31583A] outline-none focus:border-[#72B65D]";
 const defaultOverlay: StoryboardTextOverlayDto = { text: "", font: "sans", color: "#FFFFFF", backgroundColor: "#284D31", position: "bottom", size: "medium" };
@@ -38,15 +41,19 @@ function ScenePreview({ scriptId, frame, aspectRatio }: { scriptId: string; fram
     return () => { cancelled = true; window.clearTimeout(refreshTimer); };
   }, [scriptId, frame.illustrationAssetId, reload]);
   const overlay = frame.onScreenText ?? defaultOverlay;
-  return <div className="relative overflow-hidden rounded-xl bg-[#EAF0E4]" style={{ aspectRatio: aspectRatio.replace(":", " / "), containerType: "inline-size" }}>
-    {url && !error ? <img src={url} alt={`Minh họa ${frame.title}`} className="absolute inset-0 h-full w-full object-contain" onError={() => setError(true)} /> : <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#DDEBD4] via-[#F4F5ED] to-[#EDDFEA] p-5 text-center">
-      {loading ? <LoaderCircle size={24} className="animate-spin text-[#789472]" /> : <ImagePlus size={30} className="text-[#91A787]" />}
-      <p className="text-[11px] leading-5 text-[#637B60]">{error ? "Ảnh chưa tải được. Hãy thử tải lại trang." : loading ? "Đang tải ảnh…" : frame.visual || "Thêm ảnh để hình dung cảnh quay"}</p>
+  const [w, h] = aspectRatio.split(":").map(Number);
+  const ratio = w! / h!;
+  return <div className="relative aspect-[4/3] overflow-hidden border border-[#89947F] bg-[#F1F2EA]">
+    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 overflow-hidden bg-[#FFFDF8]" style={{ width: `${Math.min(100, ratio / (4 / 3) * 100)}%`, height: `${Math.min(100, (4 / 3) / ratio * 100)}%`, containerType: "inline-size" }}>
+    {url && !error ? <img src={url} alt={`Minh họa ${frame.title}`} className="absolute inset-0 h-full w-full object-contain" onError={() => setError(true)} /> : <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center">
+      {loading ? <LoaderCircle size={24} className="animate-spin text-[#789472]" /> : error ? <p className="text-[11px] text-[#637B60]">Ảnh chưa tải được. Hãy thử tải lại trang.</p> : <><ShotCompositionGuide angle={frame.cameraAngle ?? ""} size={frame.shotSize ?? ""} visual={frame.visual} /><span className="text-[9px] text-[#879487]">Sơ đồ bố cục · chưa có ảnh</span></>}
     </div>}
     {overlay.text && <div className="pointer-events-none absolute left-[6%] right-[6%] max-h-[80%] overflow-hidden rounded-lg px-[4%] py-[3%] text-center font-bold leading-tight whitespace-pre-wrap break-words" style={{
       color: overlay.color, backgroundColor: overlay.backgroundColor, fontFamily: fonts[overlay.font], fontSize: overlay.size === "small" ? "5cqw" : overlay.size === "large" ? "9cqw" : "7cqw",
       ...(overlay.position === "top" ? { top: "8%" } : overlay.position === "center" ? { top: "50%", transform: "translateY(-50%)" } : { bottom: "8%" }),
     }}>{overlay.text}</div>}
+    </div>
+    <span className="absolute bottom-1 right-1 bg-white/80 px-1 text-[9px] text-[#748A74]">{aspectRatio}</span>
   </div>;
 }
 
@@ -59,11 +66,12 @@ function readImage(file: File) {
   });
 }
 
-export function StoryboardBoard({ scriptId, scriptRevision, frames, settings, disabled, assistantOpen, assistant, onToggleAssistant, onChange, onUploadBusy }: {
+export function StoryboardBoard({ scriptId, scriptRevision, frames, settings, timingOptions = {}, disabled, assistantOpen, assistant, onToggleAssistant, onChange, onUploadBusy }: {
   scriptId: string;
   scriptRevision: number;
   frames: ScriptStoryboardFrameDto[];
   settings: ScriptSettingsDto;
+  timingOptions?: SpeechTimingOptions;
   disabled: boolean;
   assistantOpen: boolean;
   assistant: ReactNode;
@@ -106,7 +114,13 @@ export function StoryboardBoard({ scriptId, scriptRevision, frames, settings, di
   }, [inspectorTab, selected?.id]);
 
   function updateFrame(id: string, patch: Partial<ScriptStoryboardFrameDto>) {
-    changeRef.current(framesRef.current.map((frame) => frame.id === id ? { ...frame, ...patch } : frame));
+    // A translated image brief must never outlive a manual change to its visual source.
+    changeRef.current(framesRef.current.map((frame) => {
+      if (frame.id !== id) return frame;
+      const visualChanged = (["visual", "shotSize", "cameraAngle", "cameraMovement", "direction"] as const)
+        .some((key) => patch[key] !== undefined && patch[key] !== frame[key]);
+      return { ...frame, ...patch, ...(visualChanged ? { imagePrompt: "" } : {}) };
+    }));
   }
   function updateOverlay(patch: Partial<StoryboardTextOverlayDto>) {
     if (selected) updateFrame(selected.id, { onScreenText: { ...overlay, ...patch } });
@@ -152,7 +166,7 @@ export function StoryboardBoard({ scriptId, scriptRevision, frames, settings, di
 
   return <section className="space-y-4" aria-label="Storyboard trực quan">
     <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[#DDE8D6] bg-white p-4">
-      <div><h2 className="text-lg font-bold text-[#284D31]">Hình dung video trước khi quay</h2><p className="mt-1 text-xs leading-5 text-[#748A74]">{frames.length}/16 cảnh · {total}s / mục tiêu {settings.targetDurationSeconds}s · {settings.aspectRatio}</p><p className="mt-1 text-xs text-[#748A74]">Ảnh là tham chiếu để quay. Chữ nằm trên lớp riêng và có thể chỉnh lại.</p></div>
+      <div><h2 className="text-lg font-bold text-[#284D31]">Bản hướng dẫn quay</h2><p className="mt-1 text-xs leading-5 text-[#748A74]">{frames.length}/16 cảnh · {total}s / mục tiêu {settings.targetDurationSeconds}s · {settings.aspectRatio}</p><p className="mt-1 max-w-xl text-xs leading-5 text-[#748A74]">Đọc từng ô từ trái sang phải: bố cục → hành động → lời thoại → cách nối cảnh. Sơ đồ giúp đặt máy; ảnh AI là minh họa tùy chọn.</p></div>
       <div className="flex flex-wrap gap-2"><button ref={assistantButtonRef} type="button" disabled={disabled || uploading} onClick={onToggleAssistant} aria-expanded={assistantOpen} aria-controls={assistantId} className={`inline-flex items-center gap-2 rounded-xl border border-[#D7CCDA] px-3 py-2.5 text-xs font-bold text-[#72506B] disabled:opacity-40 ${assistantOpen ? "bg-[#F3EAF1]" : ""}`}><Sparkles size={14} /> Nhờ Emsen chia cảnh</button><button type="button" onClick={addScene} disabled={disabled || frames.length >= 16} className="inline-flex items-center gap-2 rounded-xl bg-[#4E8052] px-3 py-2.5 text-xs font-bold text-white disabled:opacity-40"><Plus size={14} /> Thêm cảnh</button></div>
     </div>
     <div id={assistantId} ref={assistantRef} hidden={!assistantOpen} className="scroll-mt-[var(--script-toolbar-offset,160px)]" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onToggleAssistant(); } }}>{assistantOpen && assistant}</div>
@@ -160,12 +174,22 @@ export function StoryboardBoard({ scriptId, scriptRevision, frames, settings, di
     {notice && <p role="status" className="flex items-center gap-2 rounded-xl bg-[#EAF6E4] p-3 text-xs text-[#3F8240]"><Check size={14} />{notice}</p>}
     {frames.length > 0 && total !== settings.targetDurationSeconds && <p className="text-xs text-[#A06F3F]">Thời lượng các cảnh đang {total < settings.targetDurationSeconds ? "ngắn hơn" : "dài hơn"} mục tiêu {Math.abs(total - settings.targetDurationSeconds)} giây. Bạn có thể chỉnh từng cảnh.</p>}
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_350px]">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 min-[540px]:grid-cols-2">
         {frames.map((frame, index) => <div key={frame.id} draggable={!disabled} onDragStart={(event) => { setDraggedId(frame.id); event.dataTransfer.setData("text/plain", frame.id); event.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => setDraggedId(null)} onDragOver={(event) => { if (!disabled && draggedId) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); if (draggedId) moveScene(draggedId, index); setDraggedId(null); }} className={`overflow-hidden rounded-2xl border bg-white transition ${selected?.id === frame.id ? "border-[#72B65D] ring-2 ring-[#DDEED6]" : "border-[#DFE7D9]"} ${draggedId === frame.id ? "opacity-50" : ""}`}>
           <button type="button" disabled={disabled} aria-pressed={selected?.id === frame.id} aria-label={`Chọn cảnh ${index + 1}: ${frame.title}`} onClick={() => setSelectedId(frame.id)} className="block w-full p-2.5 text-left">
-            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold text-[#748A74]"><GripVertical size={12} /><span className="flex-1">Cảnh {index + 1}</span>{frame.locked && <LockKeyhole size={12} aria-label="Đã khóa" />}<span>{frame.durationSeconds}s</span></div>
+            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold text-[#748A74]"><GripVertical size={12} /><span className="grid h-7 w-7 place-items-center rounded-full border border-[#89947F] text-sm text-[#31583A]">{index + 1}</span><span className="flex-1">{frames.slice(0, index).reduce((sum, entry) => sum + entry.durationSeconds, 0)}–{frames.slice(0, index + 1).reduce((sum, entry) => sum + entry.durationSeconds, 0)}s</span>{frame.locked && <LockKeyhole size={12} aria-label="Đã khóa" />}<span>{frame.durationSeconds}s</span></div>
             <ScenePreview scriptId={scriptId} frame={frame} aspectRatio={settings.aspectRatio} />
-            <p className="mt-2 truncate text-sm font-bold text-[#31583A]">{frame.title}</p><p className="mt-1 line-clamp-2 min-h-8 text-[11px] leading-4 text-[#879487]">{frame.dialogue || "Chưa có lời thoại"}</p>
+            <p className="mt-3 text-sm font-bold text-[#31583A]">{frame.title}</p>
+            <p className="mt-1 border-b border-[#DDE3D6] pb-2 text-[11px] font-semibold leading-5 text-[#72506B]">{[frame.shotSize, frame.cameraAngle, frame.cameraMovement].filter(Boolean).join(" · ") || "Chọn cỡ cảnh, góc máy và chuyển động trong tab Quay"}</p>
+            <div className="space-y-2 pt-2 text-[11px] leading-5 text-[#637B60]">
+              <p><strong>Hành động:</strong> {frame.visual || "Chưa mô tả thao tác"}</p>
+              <p className="border-t border-[#EDF0E7] pt-2"><strong>Thoại:</strong> {frame.dialogue || "Không thoại · quay hành động / âm thanh hiện trường"}</p>
+              <SpeechTimingHint value={frame.dialogue} seconds={frame.durationSeconds} options={timingOptions} />
+              <p className="border-t border-[#EDF0E7] pt-2"><strong>Cách quay:</strong> {frame.direction || "Bổ sung vị trí bắt đầu, thao tác và điểm cắt"}</p>
+              {frame.setup && <p><strong>Chuẩn bị:</strong> {frame.setup}</p>}
+              {frame.broll && <p><strong>Cảnh chèn:</strong> {frame.broll}</p>}
+              {frame.transition && <p><strong>Nối cảnh →</strong> {frame.transition}</p>}
+            </div>
           </button>
         </div>)}
         {!frames.length && <div className="col-span-full flex min-h-80 flex-col items-center justify-center rounded-2xl border border-dashed border-[#C9D8C2] bg-[#F7FAF3] p-8 text-center"><ImagePlus size={38} className="text-[#8CA47F]" /><h3 className="mt-4 font-bold text-[#31583A]">Cảnh đầu tiên sẽ trông như thế nào?</h3><p className="mt-2 max-w-sm text-sm leading-6 text-[#748A74]">Thêm cảnh thủ công, hoặc nhờ Emsen chia lời thoại thành các cảnh rồi tải ảnh minh họa.</p><button type="button" disabled={disabled} onClick={addScene} className="mt-5 rounded-xl bg-[#4E8052] px-4 py-2.5 text-sm font-bold text-white">Thêm cảnh đầu tiên</button></div>}
@@ -205,6 +229,7 @@ export function StoryboardBoard({ scriptId, scriptRevision, frames, settings, di
               <label className="block text-xs font-bold">Tên cảnh<input className={inputClass} maxLength={120} value={selected.title} onChange={(event) => updateFrame(selected.id, { title: event.target.value })} /></label>
               <label className="block text-xs font-bold">Lời thoại / voice-over<textarea className={inputClass} maxLength={4000} rows={3} value={selected.dialogue} onChange={(event) => updateFrame(selected.id, { dialogue: event.target.value })} /></label>
               <label className="block text-xs font-bold">Thời lượng cảnh (giây)<input type="number" min={0} max={600} step={1} className={inputClass} value={selected.durationSeconds} onChange={(event) => updateFrame(selected.id, { durationSeconds: Math.max(0, Math.min(600, Math.round(Number(event.target.value)))) })} /></label>
+              <SpeechTimingHint value={selected.dialogue} seconds={selected.durationSeconds} options={timingOptions} />
               <label className="block text-xs font-bold">Nhịp cảm xúc<input className={inputClass} maxLength={1000} value={selected.emotionalBeat} onChange={(event) => updateFrame(selected.id, { emotionalBeat: event.target.value })} /></label>
             </div>
           </div>
@@ -230,6 +255,10 @@ export function StoryboardBoard({ scriptId, scriptRevision, frames, settings, di
           </div>
           <div role="tabpanel" id={`${inspectorId}-panel-shooting`} aria-labelledby={`${inspectorId}-tab-shooting`} hidden={inspectorTab !== "shooting"}>
             <div className="space-y-4">
+              <label className="block text-xs font-bold">Cỡ cảnh<input className={inputClass} maxLength={160} value={selected.shotSize ?? ""} onChange={(event) => updateFrame(selected.id, { shotSize: event.target.value })} placeholder="Trung cảnh / cận cảnh / đặc tả bàn tay…" /></label>
+              <label className="block text-xs font-bold">Góc máy<input className={inputClass} maxLength={160} value={selected.cameraAngle ?? ""} onChange={(event) => updateFrame(selected.id, { cameraAngle: event.target.value })} placeholder="Ngang mắt / POV / từ trên xuống…" /></label>
+              <label className="block text-xs font-bold">Chuyển động máy<input className={inputClass} maxLength={240} value={selected.cameraMovement ?? ""} onChange={(event) => updateFrame(selected.id, { cameraMovement: event.target.value })} placeholder="Cố định / lia từ tay lên gương mặt…" /></label>
+              <label className="block text-xs font-bold">Chuẩn bị quay<textarea className={inputClass} maxLength={1000} rows={2} value={selected.setup ?? ""} onChange={(event) => updateFrame(selected.id, { setup: event.target.value })} placeholder="Kê điện thoại ngang mắt, ngồi cạnh cửa sổ, đặt sản phẩm bên tay phải…" /></label>
               <label className="block text-xs font-bold">Chỉ dẫn quay<textarea className={inputClass} maxLength={2000} rows={2} value={selected.direction} onChange={(event) => updateFrame(selected.id, { direction: event.target.value })} placeholder="Cận cảnh, ánh sáng tự nhiên, camera cố định…" /></label>
               <label className="block text-xs font-bold">Mục đích cảnh<textarea className={inputClass} maxLength={1000} rows={2} value={selected.visualPurpose} onChange={(event) => updateFrame(selected.id, { visualPurpose: event.target.value })} /></label>
               <label className="block text-xs font-bold">B-roll<textarea className={inputClass} maxLength={2000} rows={2} value={selected.broll} onChange={(event) => updateFrame(selected.id, { broll: event.target.value })} /></label>

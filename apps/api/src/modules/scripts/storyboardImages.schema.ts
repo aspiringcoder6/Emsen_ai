@@ -23,7 +23,12 @@ export function parseGenerateStoryboardImage(value: unknown): GenerateStoryboard
     requestId, scriptRevision: Number(input.scriptRevision), aspectRatio: input.aspectRatio as GenerateStoryboardImageRequestDto["aspectRatio"],
     style: input.style as StoryboardImageStyle, prompt: text(input.prompt, "Mô tả bổ sung", 1_200),
     creatorAction: creatorAction as StoryboardCreatorAction,
-    scene: { id: text(scene.id, "Mã cảnh", 100, true), title: text(scene.title, "Tên cảnh", 120, true), visual: text(scene.visual, "Mô tả hình ảnh", 2_000), direction: text(scene.direction, "Chỉ dẫn quay", 2_000), locked: scene.locked === true },
+    scene: { id: text(scene.id, "Mã cảnh", 100, true), title: text(scene.title, "Tên cảnh", 120, true), visual: text(scene.visual, "Mô tả hình ảnh", 2_000), direction: text(scene.direction, "Chỉ dẫn quay", 2_000), locked: scene.locked === true,
+      ...(scene.shotSize !== undefined ? { shotSize: text(scene.shotSize, "Cỡ cảnh", 160) } : {}),
+      ...(scene.cameraAngle !== undefined ? { cameraAngle: text(scene.cameraAngle, "Góc máy", 160) } : {}),
+      ...(scene.cameraMovement !== undefined ? { cameraMovement: text(scene.cameraMovement, "Chuyển động máy", 240) } : {}),
+      ...(scene.imagePrompt !== undefined ? { imagePrompt: text(scene.imagePrompt, "Mô tả ảnh", 700) } : {}),
+    },
   };
   if (!output.scene.visual && !output.prompt) throw new HttpError(400, "INVALID_IMAGE_REQUEST", "Hãy mô tả hình ảnh / hành động hoặc nhập mô tả bổ sung trước khi tạo ảnh.");
   if (output.scene.locked) throw new HttpError(409, "STORYBOARD_SCENE_LOCKED", "Mở khóa cảnh trước khi nhờ AI tạo ảnh.");

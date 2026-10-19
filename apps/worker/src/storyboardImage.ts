@@ -11,13 +11,14 @@ export type StoryboardImageJob = {
 };
 
 function sceneWords(input: GenerateStoryboardImageRequestDto) {
-  return `${input.scene.visual} ${input.prompt}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
+  return `${input.scene.visual} ${input.scene.cameraAngle ?? ""} ${input.scene.imagePrompt ?? ""} ${input.prompt}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
 }
 
 export function storyboardCreatorAction(input: GenerateStoryboardImageRequestDto): StoryboardCreatorAction {
   if (input.creatorAction && input.creatorAction !== "auto") return input.creatorAction;
   const visual = sceneWords(input);
   if (/b[ -]?roll|product.only|khong (co )?(nguoi|nhan vat)|chi (quay |co )?san pham/.test(visual)) return "b-roll";
+  if (/pov|overhead|tu tren xuong/.test(visual) && /tay|hands|tabletop/.test(visual)) return "b-roll";
   if (/unbox|mo (hop|goi|bich)|khui|boc (hop|goi)/.test(visual)) return "unbox";
   if (/thoa|boi kem|su dung|dung thu|demo|demonstrat|try on|applying/.test(visual)) return "demonstrate";
   if (/gio (len|truoc)|gioi thieu san pham|\bcam\b|show.*product|hold.*product/.test(visual)) return "show-product";
@@ -27,7 +28,7 @@ export function storyboardCreatorAction(input: GenerateStoryboardImageRequestDto
 export function buildStoryboardImagePrompt(input: GenerateStoryboardImageRequestDto) {
   const styles = {
     creator: "Full-color lifestyle photograph for a social-media creator video, natural daylight, warm modern colors, polished smartphone UGC video still, relatable home or creator studio.",
-    sketch: "Storyboard pencil sketch, simple clear shapes, light paper texture, grayscale with subtle accent colors.",
+    sketch: "Storyboard pencil sketch, black pencil line art on plain white paper, simple clear shapes, minimal shading, rough hand-drawn human figures and props, readable silhouettes and spatial layout. Prioritize camera framing and the action over beauty or fine detail.",
     cinematic: "Full-color cinematic video still, realistic lighting, expressive subject, carefully framed action.",
     illustration: "Full-color polished character illustration, expressive face and body language, clear silhouettes, warm vibrant colors, readable action.",
   };
@@ -46,18 +47,23 @@ export function buildStoryboardImagePrompt(input: GenerateStoryboardImageRequest
     : /so tay|notebook/.test(words) ? "The item is a notebook."
     : "";
   return [
-    "Create one clear video frame showing the scene's visible action. No text, subtitles, typography, logos, or watermarks; titles will be added separately.",
+    "Create one single storyboard panel, one shot and one visible action. No collage, contact sheet, multiple panels or decorative borders. No text, subtitles, typography, logos, or watermarks; titles and shooting notes will be added separately.",
     styles[input.style],
+    `Compose for ${input.aspectRatio}; keep the full action inside frame.`,
+    // Put explicit composition before generic defaults and the long visual brief.
+    input.scene.shotSize ? `Required shot size: ${input.scene.shotSize.slice(0, 160)}.` : "",
+    input.scene.cameraAngle ? `Required camera viewpoint: ${input.scene.cameraAngle.slice(0, 160)}.` : "",
+    input.scene.cameraMovement ? `Camera motion for this shot: ${input.scene.cameraMovement.slice(0, 180)}. Depict the main action, not multiple exposures.` : "",
+    input.scene.direction ? `Shooting direction: ${input.scene.direction.slice(0, 240)}` : "",
+    `Visible action described by the creator: ${(input.scene.imagePrompt || input.scene.visual).slice(0, 700)}`,
     actions[action === "auto" ? "talk-to-camera" : action],
     action === "b-roll" ? "Focus tightly on the relevant object and action."
-      : "Medium or waist-up shot; foreground subject fills most of the frame, face and hands readable. Supporting objects stay close to the subject; simple softly blurred background.",
+      : input.scene.shotSize || input.scene.cameraAngle ? "Follow the required shot size and viewpoint. Keep the subject, interacting hands and relevant objects readable; simple background."
+        : "Medium or waist-up shot; foreground subject fills most of the frame, face and hands readable. Supporting objects stay close to the subject; simple background.",
     product,
-    `Compose for ${input.aspectRatio}; leave a little space for a text overlay.`,
     input.style === "sketch" ? "" : "Finished image with rich natural color and a clearly readable action.",
     // Titles such as 'Hook' and 'CTA' are narrative labels, not visual objects.
-    `Visible action described by the creator: ${input.scene.visual.slice(0, 550)}`,
     input.prompt ? `Additional visual direction: ${input.prompt.slice(0, 450)}` : "",
-    input.scene.direction ? `Camera and body language: ${input.scene.direction.slice(0, 150)}` : "",
   ].filter(Boolean).join("\n").slice(0, 2_048);
 }
 

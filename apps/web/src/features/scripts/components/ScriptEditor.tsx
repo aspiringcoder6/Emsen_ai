@@ -39,6 +39,8 @@ import { parseTimelineText, serializeTimelineText } from "../scriptTimeline";
 
 const inputClass = "mt-2 w-full rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2.5 text-sm font-normal leading-6 text-[#31583A] outline-none transition focus:border-[#72B65D] focus:ring-2 focus:ring-[#DDEED6]";
 import { StoryboardBoard } from "./StoryboardBoard";
+import { estimateSpeech, speechTimingProfile, type SpeechTimingOptions } from "@creator-flow/contracts";
+import { SpeechTimingHint } from "./SpeechTimingHint";
 
 const storyboardGuideStorageKey = "emsen:storyboard-guide-seen";
 
@@ -399,6 +401,7 @@ function ScriptLineEditor({
 }
 
 function TextSection({
+  timingOptions,
   number,
   title,
   value,
@@ -411,6 +414,7 @@ function TextSection({
   onAssist,
   onSettings,
 }: {
+  timingOptions: SpeechTimingOptions;
   number: number;
   title: string;
   value: string;
@@ -445,7 +449,7 @@ function TextSection({
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-bold text-[#284D31]">{title}</h3>
-          <p className="text-[11px] text-[#879487]">{words ? `${words} từ` : "Chưa viết"}</p>
+          <p className="text-[11px] text-[#879487]">{words ? `${words} ${speechTimingProfile(timingOptions).unit}` : "Chưa viết"}</p>
         </div>
         <button
           type="button"
@@ -499,6 +503,7 @@ function TextSection({
                     rows={section === "body" ? 2 : 1}
                     value={segment.text}
                   />
+                  <SpeechTimingHint value={segment.text} seconds={segment.endSeconds - segment.startSeconds} options={timingOptions} />
                 </div>
               </div>
             ))}
@@ -671,7 +676,8 @@ export function ScriptEditor({
   const primarySections = [draft.content.hook, draft.content.body, draft.content.cta];
   const completedSections = primarySections.filter((value) => value.trim()).length;
   const wordCount = countScriptWords(primarySections);
-  const wordRange = recommendedScriptWords(draft.settings.targetDurationSeconds);
+  const wordRange = recommendedScriptWords(draft.settings.targetDurationSeconds, draft.advancedSettings);
+  const speech = estimateSpeech(primarySections.join(" "), draft.advancedSettings);
   const wordCountState = wordCount < wordRange.min ? "short" : wordCount > wordRange.max ? "long" : "balanced";
   const ctaTimeline = parseTimelineText(draft.content.cta);
   const timelineEndSeconds = ctaTimeline.at(-1)?.endSeconds;
@@ -687,7 +693,7 @@ export function ScriptEditor({
           <button type="button" onClick={onBack} disabled={storyboardUploading} className="inline-flex items-center gap-2 rounded-xl border border-[#DDE8D6] bg-white px-3 py-2.5 text-xs font-bold"><ArrowLeft size={15} /> <span className="hidden sm:inline">Thư viện</span></button>
           <div className="min-w-[190px] flex-1">
             <input value={draft.title} maxLength={250} placeholder="Tên kịch bản" onChange={(event) => applyChange({ ...draft, title: event.target.value })} className="w-full bg-transparent text-base font-bold text-[#284D31] outline-none sm:text-xl" />
-            <p className="mt-0.5 truncate text-[11px] text-[#748A74]">{draft.settings.platform || "Chưa chọn nền tảng"} · {formatScriptDate(draft.settings.scheduledFor)} · {wordCount} từ / gợi ý {wordRange.min}–{wordRange.max}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[#748A74]">{draft.settings.platform || "Chưa chọn nền tảng"} · {formatScriptDate(draft.settings.scheduledFor)} · {wordCount} {speech.unit} · đọc ước tính {speech.minSeconds}–{speech.maxSeconds}s / mục tiêu {draft.settings.targetDurationSeconds}s</p>
           </div>
 
           <button type="button" disabled={dirty || saving || storyboardUploading} onClick={onStartVideo} title={dirty ? "Hãy lưu kịch bản trước khi tạo dự án video" : "Tạo dự án dựng từ kịch bản này"} className="inline-flex items-center gap-2 rounded-xl border border-[#C8DBC1] bg-[#F4FAF0] px-3 py-2.5 text-xs font-bold text-[#3F8240] disabled:cursor-not-allowed disabled:opacity-45"><Film size={15} /> <span className="hidden sm:inline">Dựng video</span></button>
@@ -749,14 +755,15 @@ export function ScriptEditor({
                 <span className="shrink-0 text-xs font-bold text-[#3F8240]">{completedSections}/3</span>
               </div>
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#DCEAD6]"><span className="block h-full rounded-full bg-[#72B65D] transition-all" style={{ width: `${(completedSections / 3) * 100}%` }} /></div>
-              <p className={`mt-1.5 text-[10px] ${wordCountState === "balanced" ? "text-[#3F8240]" : "text-[#879487]"}`}>{wordCountState === "balanced" ? "Độ dài đang phù hợp với thời lượng." : wordCountState === "short" ? `Có thể phát triển thêm để đạt khoảng ${wordRange.min}–${wordRange.max} từ.` : `Có thể rút gọn để gần khoảng ${wordRange.min}–${wordRange.max} từ.`}</p>
+              <p className={`mt-1.5 text-[11px] ${wordCountState === "balanced" ? "text-[#3F8240]" : "text-[#A06F3F]"}`}>{wordCountState === "balanced" ? "Tổng lời thoại gần thời lượng mục tiêu; kiểm tra thêm từng đoạn bên dưới." : wordCountState === "short" ? `Thoại còn ngắn: phát triển thêm đến khoảng ${wordRange.min}–${wordRange.max} ${speech.unit}.` : `Thoại còn dài: gợi ý rút còn khoảng ${wordRange.min}–${wordRange.max} ${speech.unit}.`}</p>
+              <p className="mt-1 text-[10px] leading-4 text-[#879487]">Thời gian đọc là ước tính theo nhịp đã chọn. Đọc thử với đồng hồ trước khi quay; tiếng Việt được đếm theo tiếng tách bằng dấu cách.</p>
               {timelineNeedsUpdate ? <p className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-[#A06F3F]"><Clock3 size={11} /> Timeline đang kết thúc ở {timelineEndSeconds}s, khác mục tiêu {draft.settings.targetDurationSeconds}s. Hãy nhờ Emsen chia lại mốc thời gian.</p> : null}
             </div>
           </section>
 
-          <TextSection number={1} title="Hook" value={draft.content.hook} rows={3} placeholder="Câu mở đầu khiến người xem dừng lại…" section="hook" busy={assisting === "hook"} aiConfigured={aiConfigured} onChange={(hook) => changeContent({ hook })} onAssist={onAssist} onSettings={onSettings} />
-          <TextSection number={2} title="Nội dung" value={draft.content.body} rows={8} placeholder="Nói điều chính như đang trò chuyện với người xem…" section="body" busy={assisting === "body"} aiConfigured={aiConfigured} onChange={(body) => changeContent({ body })} onAssist={onAssist} onSettings={onSettings} />
-          <TextSection number={3} title="CTA" value={draft.content.cta} rows={3} placeholder="Bạn muốn người xem làm gì tiếp theo?" section="cta" busy={assisting === "cta"} aiConfigured={aiConfigured} onChange={(cta) => changeContent({ cta })} onAssist={onAssist} onSettings={onSettings} />
+          <TextSection timingOptions={draft.advancedSettings} number={1} title="Hook" value={draft.content.hook} rows={3} placeholder="Câu mở đầu khiến người xem dừng lại…" section="hook" busy={assisting === "hook"} aiConfigured={aiConfigured} onChange={(hook) => changeContent({ hook })} onAssist={onAssist} onSettings={onSettings} />
+          <TextSection timingOptions={draft.advancedSettings} number={2} title="Nội dung" value={draft.content.body} rows={8} placeholder="Nói điều chính như đang trò chuyện với người xem…" section="body" busy={assisting === "body"} aiConfigured={aiConfigured} onChange={(body) => changeContent({ body })} onAssist={onAssist} onSettings={onSettings} />
+          <TextSection timingOptions={draft.advancedSettings} number={3} title="CTA" value={draft.content.cta} rows={3} placeholder="Bạn muốn người xem làm gì tiếp theo?" section="cta" busy={assisting === "cta"} aiConfigured={aiConfigured} onChange={(cta) => changeContent({ cta })} onAssist={onAssist} onSettings={onSettings} />
 
           {completedSections === 3 && !storyboardRequested && !draft.content.storyboard.length ? (
             <section className="rounded-[22px] border border-[#D9D4E5] bg-gradient-to-br from-[#FBF6FC] to-white p-5">
@@ -796,6 +803,7 @@ export function ScriptEditor({
               scriptRevision={draft.revision}
               frames={draft.content.storyboard}
               settings={draft.settings}
+              timingOptions={draft.advancedSettings}
               disabled={saving || assisting === "storyboard"}
               assistantOpen={storyboardAssistantOpen}
               assistant={<AiPrompt section="storyboard" autoFocus busy={assisting === "storyboard"} enabled={aiConfigured} onAsk={(prompt, referenceAssets) => onAssist("storyboard", prompt, referenceAssets)} onClose={() => setStoryboardAssistantOpen(false)} onSettings={onSettings} />}
@@ -822,7 +830,7 @@ export function ScriptEditor({
               <div>
                 <p className="text-xs font-bold">Thời lượng mục tiêu</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">{scriptDurationPresets.map((seconds) => <button key={seconds} type="button" onClick={() => changeSettings({ targetDurationSeconds: seconds })} className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${draft.settings.targetDurationSeconds === seconds ? "border-[#72B65D] bg-[#EAF6E4] text-[#31583A]" : "border-[#E5DED8] text-[#748A74]"}`}>{seconds}s</button>)}</div>
-                <label className="mt-2 flex items-center gap-2 text-[11px] text-[#748A74]"><input aria-label="Thời lượng mục tiêu tùy chỉnh" type="number" min={5} max={3600} className="w-24 rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2 text-sm text-[#31583A]" value={draft.settings.targetDurationSeconds} onChange={(event) => changeSettings({ targetDurationSeconds: Number(event.target.value) })} /> giây · {wordRange.min}–{wordRange.max} từ</label>
+                <label className="mt-2 flex items-center gap-2 text-[11px] text-[#748A74]"><input aria-label="Thời lượng mục tiêu tùy chỉnh" type="number" min={5} max={3600} className="w-24 rounded-xl border border-[#E6D4CE] bg-[#FFFDF8] px-3 py-2 text-sm text-[#31583A]" value={draft.settings.targetDurationSeconds} onChange={(event) => changeSettings({ targetDurationSeconds: Number(event.target.value) })} /> giây · {wordRange.min}–{wordRange.max} {speech.unit}</label>
               </div>
               <label className="block text-xs font-bold">Tỷ lệ khung hình<select className={inputClass} value={draft.settings.aspectRatio} onChange={(event) => changeSettings({ aspectRatio: event.target.value as ScriptDocumentDto["settings"]["aspectRatio"] })}>{["9:16", "4:5", "1:1", "16:9"].map((ratio) => <option key={ratio}>{ratio}</option>)}</select></label>
               <label className="block text-xs font-bold">Mục tiêu<textarea className={inputClass} rows={2} value={draft.settings.objective} onChange={(event) => changeSettings({ objective: event.target.value })} /></label>

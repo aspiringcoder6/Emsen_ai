@@ -85,9 +85,16 @@ Slice 2 thêm tạo ảnh theo cảnh qua Cloudflare Workers AI Free, hàng đ�
 phương án ảnh. Cần Account ID/API Token riêng, cấu hình ở cả API và worker;
 xem [docs/STORYBOARD_IMAGE_SETUP.md](docs/STORYBOARD_IMAGE_SETUP.md).
 
-Ảnh mới mặc định theo phong cách creator có màu, với lựa chọn động tác trước
-camera, giới thiệu sản phẩm, mở hộp, demo và B-roll. Tab Hình ảnh cũng cho chọn
+Storyboard trình bày từng shot cùng cỡ cảnh, góc máy, chuyển động, thao tác,
+chuẩn bị và cách nối cảnh. Ảnh mới mặc định là phác thảo nét đơn giản; có thể
+chọn ảnh màu, động tác trước camera, giới thiệu sản phẩm, mở hộp, demo và B-roll.
+Tab Hình ảnh cũng cho chọn
 avatar Emsen gốc theo tư thế/biểu cảm sẵn có, không cần gọi AI hoặc API key.
+
+Lời thoại dùng chung cách ước tính thời gian đọc giữa API và giao diện, đếm
+tiếng Việt theo tiếng tách bằng dấu cách và có điều chỉnh theo nhịp đọc.
+Kiểm tra cả từng mốc để tránh câu đọc khoảng 4 giây bị gán 10 giây. Xem
+[hướng dẫn và giới hạn](docs/STORYBOARD_CREATOR_GUIDE.md).
 
 Nếu tạo ảnh trên deploy cứ ở `queued`/0%, kiểm tra worker chạy cùng phiên bản
 và cùng database với API. Sau khi build worker, lệnh

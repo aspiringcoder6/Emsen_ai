@@ -47,6 +47,19 @@ test("creator prompts focus on colored presenter actions, preserve B-roll and ne
   assert.ok(buildStoryboardImagePrompt(input).length <= 2_048);
 });
 
+test("sketch shots respect their camera viewpoint and concise translated action instead of forcing a presenter medium shot", () => {
+  const input = makeJob().input;
+  input.scene = { ...input.scene, visual: "Đôi tay mở hộp trên bàn", shotSize: "Đặc tả bàn tay", cameraAngle: "Từ trên xuống / overhead", cameraMovement: "Máy cố định", imagePrompt: "Overhead close-up of two hands opening a cardboard box on a desk." };
+  const prompt = buildStoryboardImagePrompt(input);
+  assert.match(prompt, /single storyboard panel/);
+  assert.match(prompt, /plain white paper/);
+  assert.match(prompt, /Required camera viewpoint: Từ trên xuống/);
+  assert.match(prompt, /Overhead close-up of two hands/);
+  assert.doesNotMatch(prompt, /Medium or waist-up shot/);
+  assert.match(prompt, /No text/);
+  assert.match(prompt, /9:16/);
+});
+
 test("worker persists private candidates without editing scripts, and fails safely after config/quota/storage changes", async () => {
   const original = { ...workerConfig.imageGeneration };
   Object.assign(workerConfig.imageGeneration, { accountId: "c".repeat(32), apiToken: "private-worker-test-token", provider: "cloudflare-workers-ai", model: "@cf/black-forest-labs/flux-1-schnell" });

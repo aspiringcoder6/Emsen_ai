@@ -3,10 +3,26 @@ import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { parseStoryboard } from "../src/modules/scripts/script.schema.js";
 import { parseStoryboardUpload } from "../src/modules/scripts/storyboard.schema.js";
-import { mergeStoryboardSuggestions } from "../src/modules/scripts/storyboardSuggestions.js";
+import { mergeStoryboardSuggestions, storyboardSuggestionIssues } from "../src/modules/scripts/storyboardSuggestions.js";
 
 const legacy = { id: "scene-1", title: "Cảnh mở đầu", visual: "Cận bàn làm việc", dialogue: "Bắt đầu từ hôm nay", direction: "Máy cố định", durationSeconds: 5 };
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZc0AAAAASUVORK5CYII=";
+
+test("shooting directions survive saves and AI boards cannot omit/reorder approved dialogue or stretch a line", () => {
+  const content = { hook: "[0:00–0:03] [Nói trực tiếp] Hãy đặt điện thoại ngang mắt rồi nhìn thẳng vào camera để bắt đầu.", body: "[0:03–0:07] [Voice-over] Tiếp theo mình đặt sản phẩm lên bàn và quay cận cảnh đôi tay đang mở hộp.", cta: "[0:07–0:10] [Nói trực tiếp] Bạn thử góc quay này và chia sẻ kết quả với mình nhé.", storyboard: [] };
+  const frames = parseStoryboard([content.hook, content.body, content.cta].map((dialogue, index) => ({ ...legacy, id: `shot-${index}`, dialogue, durationSeconds: index === 1 ? 4 : 3, shotSize: "Cận cảnh", cameraAngle: "Từ trên xuống", cameraMovement: "Máy cố định", setup: "Đặt hộp trên bàn, kê điện thoại chắc chắn.", imagePrompt: "Overhead view of hands opening a package on a table." })));
+  assert.deepEqual(parseStoryboard(JSON.parse(JSON.stringify(frames))), frames);
+  assert.deepEqual(storyboardSuggestionIssues(content, frames, 10), []);
+  const summary = frames.map((frame, index) => index === 1 ? { ...frame, dialogue: "Mở hộp." } : frame);
+  assert.ok(storyboardSuggestionIssues(content, summary, 10).some((issue) => issue.includes("không tóm tắt")));
+  assert.ok(storyboardSuggestionIssues(content, [...frames].reverse(), 10).some((issue) => issue.includes("đúng thứ tự")));
+  assert.ok(storyboardSuggestionIssues(content, frames.map((frame) => ({ ...frame, durationSeconds: 10 })), 30).some((issue) => issue.includes("đọc ước tính")));
+  const locked = { ...frames[0]!, locked: true, illustrationAssetId: randomUUID() };
+  const merged = mergeStoryboardSuggestions([locked], frames.slice(1));
+  assert.equal(merged[0], locked);
+  assert.ok(storyboardSuggestionIssues(content, merged, 7, [locked]).some((issue) => issue.includes("Tổng các cảnh")));
+  assert.throws(() => parseStoryboard([{ ...frames[0], cameraAngle: "x".repeat(161) }]));
+});
 
 test("legacy scenes receive defaults and visual scenes survive a JSON save/reopen", () => {
   const frame = parseStoryboard([legacy])[0]!;

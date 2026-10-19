@@ -1,4 +1,5 @@
 import type { ScriptContentDto } from "@creator-flow/contracts";
+import { countSpeechUnits, speechTimingProfile, speechSlotStatus, speechUnitBudget, type SpeechTimingOptions } from "@creator-flow/contracts";
 
 export type ScriptTimestampRange = {
   endSeconds: number;
@@ -66,7 +67,7 @@ export function stripScriptTimestamps(value: string) {
 }
 
 export function countSpokenWords(value: string) {
-  return stripScriptTimestamps(value).split(/\s+/).filter(Boolean).length;
+  return countSpeechUnits(value);
 }
 
 type TimedSegment = ScriptTimestampRange & { text: string };
@@ -132,7 +133,7 @@ function preferredDeliveryLabel(value: string) {
 }
 
 function spokenDuration(wordCount: number, minimum: number, maximum: number) {
-  return clamp(Math.round(wordCount / 2.7), minimum, maximum);
+  return clamp(Math.round(wordCount / speechTimingProfile().rate), minimum, maximum);
 }
 
 function serializeTimedSpeech(
@@ -292,79 +293,87 @@ export function scriptTimelineIssues(content: ScriptContentDto, targetDurationSe
   return [...new Set(issues)];
 }
 
-export function scriptWordBudget(targetDurationSeconds: number) {
+export function scriptWordBudget(targetDurationSeconds: number, options: SpeechTimingOptions = {}) {
   const duration = clamp(targetDurationSeconds, 5, 3_600);
-  const totalMin = duration <= 15
-    ? Math.round(duration * 35 / 15)
-    : duration <= 30
-      ? Math.round(35 + (duration - 15) * 35 / 15)
-      : duration <= 45
-        ? Math.round(70 + (duration - 30) * 30 / 15)
-        : duration <= 60
-          ? Math.round(100 + (duration - 45) * 30 / 15)
-          : Math.round(130 + (duration - 60) * 2.15);
-  const totalMax = duration <= 15
-    ? Math.round(duration * 50 / 15)
-    : duration <= 30
-      ? Math.round(50 + (duration - 15) * 40 / 15)
-      : duration <= 45
-        ? Math.round(90 + (duration - 30) * 40 / 15)
-        : duration <= 60
-          ? Math.round(130 + (duration - 45) * 40 / 15)
-          : Math.round(170 + (duration - 60) * 2.8);
-  const hookMin = duration >= 12 ? 6 : Math.max(3, Math.round(totalMin * 0.04));
-  const ctaMin = duration >= 12 ? 5 : Math.max(3, Math.round(totalMin * 0.04));
+  const total = speechUnitBudget(duration, options);
+  const edge = duration >= 12
+    ? { min: speechUnitBudget(3, options).min, max: speechUnitBudget(5, options).max }
+    : speechUnitBudget(Math.max(1, duration * 0.25), options);
   return {
     body: {
-      max: Math.max(15, Math.round(totalMax * 0.9)),
-      min: Math.max(8, Math.round(totalMin * 0.55)),
+      max: Math.max(1, total.max - edge.min * 2),
+      min: Math.max(1, total.min - edge.max * 2),
     },
-    cta: { max: duration >= 12 ? 16 : Math.max(8, Math.round(totalMax * 0.25)), min: ctaMin },
-    hook: { max: duration >= 12 ? 15 : Math.max(8, Math.round(totalMax * 0.3)), min: hookMin },
-    total: { max: totalMax, min: totalMin },
+    cta: { ...edge }, hook: { ...edge }, total,
   };
 }
 
-export function scriptGenerationIssues(content: ScriptContentDto, targetDurationSeconds: number) {
-  const budget = scriptWordBudget(targetDurationSeconds);
+/** A continuous timestamp alone cannot make a short sentence fill its time slot. */
+export function scriptSpeechTimingIssues(content: ScriptContentDto, options: SpeechTimingOptions = {}) {
+  return [content.hook, content.body, content.cta].flatMap((section) => parseTimedSegments(section).flatMap((segment) => {
+    const slot = segment.endSeconds - segment.startSeconds;
+    const timing = speechSlotStatus(segment.text, slot, options);
+    if (timing.status === "balanced") return [];
+    const budget = speechUnitBudget(slot, options);
+    return [`Mốc ${segment.label}: ${timing.count} ${timing.unit}, đọc ước tính ${timing.minSeconds}–${timing.maxSeconds} giây nhưng được gán ${slot} giây; cần khoảng ${budget.min}–${budget.max} ${timing.unit}. ${timing.status === "long" ? "Rút gọn lời thoại hoặc chia lại nhịp." : "Phát triển thêm lời thoại có nội dung, không kéo timestamp để bù."}`];
+  }));
+}
+
+export function scriptSectionSuggestionIssues(value: string, currentValue: string, options: SpeechTimingOptions = {}) {
+  const segments = parseTimedSegments(value);
+  const current = parseScriptTimestampRanges(currentValue);
+  const issues = scriptSpeechTimingIssues({ hook: "", body: value, cta: "", storyboard: [] }, options);
+  if (!segments.length) return [...issues, "Phần viết lại cần các mốc thời gian và lời thoại cụ thể."];
+  if (current.length && (segments[0]!.startSeconds !== current[0]!.startSeconds || segments.at(-1)!.endSeconds !== current.at(-1)!.endSeconds)) issues.push("Giữ nguyên điểm bắt đầu và kết thúc của phần đang chỉnh; phát triển lời thoại thay vì rút thời gian.");
+  segments.forEach((segment, index) => {
+    if (segment.endSeconds <= segment.startSeconds || (index > 0 && segment.startSeconds !== segments[index - 1]!.endSeconds)) issues.push("Các mốc trong phần đang chỉnh phải nối tiếp, không hở hoặc chồng lấn.");
+    if (!deliveryLabelAtStartPattern.test(segment.text)) issues.push("Mỗi mốc cần nhãn [Nói trực tiếp] hoặc [Voice-over].");
+  });
+  return [...new Set(issues)];
+}
+
+export function scriptGenerationIssues(content: ScriptContentDto, targetDurationSeconds: number, options: SpeechTimingOptions = {}) {
+  const budget = scriptWordBudget(targetDurationSeconds, options);
+  const unit = speechTimingProfile(options).unit;
   const hookWords = countSpokenWords(content.hook);
   const bodyWords = countSpokenWords(content.body);
   const ctaWords = countSpokenWords(content.cta);
   const totalWords = hookWords + bodyWords + ctaWords;
-  const issues = scriptTimelineIssues(content, targetDurationSeconds);
-  if (totalWords < budget.total.min) issues.push(`Tổng lời thoại có ${totalWords} từ; cần ít nhất ${budget.total.min} từ cho ${targetDurationSeconds} giây.`);
-  if (totalWords > budget.total.max) issues.push(`Tổng lời thoại có ${totalWords} từ; nên tối đa ${budget.total.max} từ cho ${targetDurationSeconds} giây.`);
-  if (bodyWords < budget.body.min) issues.push(`Phần nội dung có ${bodyWords} từ; cần ít nhất ${budget.body.min} từ.`);
-  if (bodyWords > budget.body.max) issues.push(`Phần nội dung có ${bodyWords} từ; nên tối đa ${budget.body.max} từ.`);
-  if (hookWords < budget.hook.min) issues.push(`Hook cần ít nhất ${budget.hook.min} từ.`);
-  if (hookWords > budget.hook.max) issues.push(`Hook nên tối đa ${budget.hook.max} từ để giữ trong 3–5 giây.`);
-  if (ctaWords < budget.cta.min) issues.push(`CTA cần ít nhất ${budget.cta.min} từ.`);
-  if (ctaWords > budget.cta.max) issues.push(`CTA nên tối đa ${budget.cta.max} từ để giữ trong 3–5 giây.`);
+  const issues = [...scriptTimelineIssues(content, targetDurationSeconds), ...scriptSpeechTimingIssues(content, options)];
+  if (totalWords < budget.total.min) issues.push(`Tổng lời thoại có ${totalWords} ${unit}; cần ít nhất ${budget.total.min} ${unit} cho ${targetDurationSeconds} giây.`);
+  if (totalWords > budget.total.max) issues.push(`Tổng lời thoại có ${totalWords} ${unit}; nên tối đa ${budget.total.max} ${unit} cho ${targetDurationSeconds} giây.`);
+  if (bodyWords < budget.body.min) issues.push(`Phần nội dung có ${bodyWords} ${unit}; cần ít nhất ${budget.body.min} ${unit}.`);
+  if (bodyWords > budget.body.max) issues.push(`Phần nội dung có ${bodyWords} ${unit}; nên tối đa ${budget.body.max} ${unit}.`);
+  if (hookWords < budget.hook.min) issues.push(`Hook cần ít nhất ${budget.hook.min} ${unit}.`);
+  if (hookWords > budget.hook.max) issues.push(`Hook nên tối đa ${budget.hook.max} ${unit} để giữ trong 3–5 giây.`);
+  if (ctaWords < budget.cta.min) issues.push(`CTA cần ít nhất ${budget.cta.min} ${unit}.`);
+  if (ctaWords > budget.cta.max) issues.push(`CTA nên tối đa ${budget.cta.max} ${unit} để giữ trong 3–5 giây.`);
   return issues;
 }
 
 /**
- * Hard failures only. Normal word-budget misses are repair hints, not a reason to
- * discard an otherwise useful script after the repair attempt.
+ * Reject misleading timing after the bounded repair attempt; never pad a short
+ * script by stretching timestamps and present it as a complete timed script.
  */
-export function scriptGenerationBlockingIssues(content: ScriptContentDto, targetDurationSeconds: number) {
-  const budget = scriptWordBudget(targetDurationSeconds);
+export function scriptGenerationBlockingIssues(content: ScriptContentDto, targetDurationSeconds: number, options: SpeechTimingOptions = {}) {
+  const budget = scriptWordBudget(targetDurationSeconds, options);
+  const unit = speechTimingProfile(options).unit;
   const hookWords = countSpokenWords(content.hook);
   const bodyWords = countSpokenWords(content.body);
   const ctaWords = countSpokenWords(content.cta);
   const totalWords = hookWords + bodyWords + ctaWords;
-  const issues = scriptTimelineIssues(content, targetDurationSeconds);
-  const minimumUsableTotal = Math.max(6, Math.ceil(budget.total.min * 0.78));
+  const issues = [...scriptTimelineIssues(content, targetDurationSeconds), ...scriptSpeechTimingIssues(content, options)];
+  const minimumUsableTotal = Math.max(6, Math.ceil(budget.total.min * 0.95));
   const minimumUsableBody = Math.max(4, Math.ceil(budget.body.min * 0.7));
   const maximumUsableTotal = Math.ceil(budget.total.max * 1.35);
   if (totalWords < minimumUsableTotal) {
-    issues.push(`Kịch bản chỉ có ${totalWords} từ, dưới mức tối thiểu có thể sử dụng là ${minimumUsableTotal} từ.`);
+    issues.push(`Kịch bản chỉ có ${totalWords} ${unit}, dưới mức tối thiểu có thể sử dụng là ${minimumUsableTotal} ${unit}.`);
   }
   if (totalWords > maximumUsableTotal) {
-    issues.push(`Kịch bản có ${totalWords} từ, vượt mức tối đa có thể sử dụng là ${maximumUsableTotal} từ.`);
+    issues.push(`Kịch bản có ${totalWords} ${unit}, vượt mức tối đa có thể sử dụng là ${maximumUsableTotal} ${unit}.`);
   }
   if (bodyWords < minimumUsableBody) {
-    issues.push(`Phần nội dung chỉ có ${bodyWords} từ, dưới mức tối thiểu có thể sử dụng là ${minimumUsableBody} từ.`);
+    issues.push(`Phần nội dung chỉ có ${bodyWords} ${unit}, dưới mức tối thiểu có thể sử dụng là ${minimumUsableBody} ${unit}.`);
   }
   if (hookWords < Math.max(2, Math.floor(budget.hook.min * 0.5))) {
     issues.push("Hook chưa có đủ lời thoại để sử dụng.");

@@ -52,14 +52,14 @@ export type UploadStoryboardAssetRequestDto = {
   dataBase64: string;
 };
 
-/** Sketch is retained for existing jobs; new creator scenes use full-color images. */
+/** A sketch communicates framing; color styles remain available as alternatives. */
 export type StoryboardImageStyle = "creator" | "sketch" | "cinematic" | "illustration";
 export type StoryboardCreatorAction = "auto" | "talk-to-camera" | "show-product" | "unbox" | "demonstrate" | "b-roll";
 
 export type GenerateStoryboardImageRequestDto = {
   requestId: string;
   scriptRevision: number;
-  scene: Pick<ScriptStoryboardFrameDto, "id" | "title" | "visual" | "direction" | "locked">;
+  scene: Pick<ScriptStoryboardFrameDto, "id" | "title" | "visual" | "direction" | "locked" | "shotSize" | "cameraAngle" | "cameraMovement" | "imagePrompt">;
   aspectRatio: ScriptSettingsDto["aspectRatio"];
   style: StoryboardImageStyle;
   creatorAction?: StoryboardCreatorAction;
@@ -101,6 +101,13 @@ export type ScriptStoryboardFrameDto = {
   retentionRole: string;
   direction: string;
   durationSeconds: number;
+  /** Optional to keep saved storyboards backwards compatible. */
+  shotSize?: string;
+  cameraAngle?: string;
+  cameraMovement?: string;
+  setup?: string;
+  /** Concise English depiction of the visible action for lightweight image models. */
+  imagePrompt?: string;
   /** Optional for documents created before visual storyboards. */
   illustrationAssetId?: string | null;
   onScreenText?: StoryboardTextOverlayDto;
